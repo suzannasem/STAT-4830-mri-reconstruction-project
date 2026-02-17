@@ -1,4 +1,4 @@
-# Sydney
+# LLM Exploratory Summary 1
 
 ## Session Focus
 A topic that came up during our Week 6 meeting was combining our kernel methods idea with diffusion models.
