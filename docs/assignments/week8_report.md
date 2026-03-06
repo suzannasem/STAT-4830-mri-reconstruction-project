@@ -9,10 +9,10 @@ Doing some literature review, we also implemented a Super-Resolution Convolution
 
 # Warm-Start Neural Network Update
 The Gaussian reconstruction (using the new image) had a PSNR of 19.581 dB, MSE = 0.011, and SSIM = 0.605, while the warm-start neural network had a PSNR of 137.75, MSE = 0, and SSIM = 1.0, meaning the neural network reconstructed image completely matched the target image.
-[[IMAGE}}
+![Week 8 Warm Start Neural Network Update](figures/warm_start_nn_update_week8.png)
 
 We can visualize the precise details that the neural network added, leaving areas that already have measured k-space values (light purple) alone while adding in details (dark purple). 
-[[image]]
+![Week 8 Warm Start Neural Network Improvements](figures/warm_start_nn_week8.png)
 
 We can see that the warm-start approach uses less memory than training the full NN. 
 
@@ -25,10 +25,10 @@ Improvement                                 : +8.96 dB
 SSIM before SRCNN (kernel optimizer output) : 0.8786
 SSIM after  SRCNN                           : 0.9534
 Improvement                                 : +0.0748
-[[image]]
+![Week 8 SRCNN Update](figures/SRCNN_update_week8.png)
 
 Here is also an example with a normal image:
-[[image]]
+![SRCNN Normal Image Reconstruction](figures/clock_image_reconstructed.png)
 
 # Next Steps
 There are many possible directions in which to take this project:
