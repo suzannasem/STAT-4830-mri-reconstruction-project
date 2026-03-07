@@ -39,7 +39,6 @@ There are many possible directions in which to take this project:
 - Exploring multi image super resolution and applying it to MRI scans or video upscaling
 - Test different success metrics in the optimization
 - Work on training a generalized model
-- Restrict the neural network so it only corrects directions the kernel has not already smoothed
 
 # Self-Critique
 We have to take these results with a grain of salt: we successfully trained the network to fill in the details and act as a residual corrector on this single image, which makes sense since it took the target image as input and was trained to fill in the differences between the Gaussian reconstruction and the target image. This requires that we already know what the true image looks like - in medical applications, we wouldn’t have this information. To make this model practically useful, we would need to train it as a residual corrector on many MRI images so it can learn to generalize what details are missing. This is a good first step, but more work needs to be done. We don’t actually know how well this model would act on a real under-sampled MRI scan.
