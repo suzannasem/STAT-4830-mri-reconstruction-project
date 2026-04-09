@@ -149,6 +149,9 @@ def run_benchmark(cfg: BenchmarkConfig | None = None, *, quick: bool = False) ->
         else:
             sel = pool
         y = y_full[sel]
+        # Older loaders stacked [S,1,1,H,W]; current loader uses [S,1,H,W]
+        if y.dim() == 5 and y.shape[2] == 1:
+            y = y.squeeze(2)
         if y.shape[2] != h or y.shape[3] != w:
             y = F.interpolate(y, size=(h, w), mode="bilinear", align_corners=False)
     else:
