@@ -413,7 +413,13 @@ def figure_error_maps(
         _save_dual(p, FIGURES_DIR / out_name, fig)
         return p
 
-    if gt is None:
+    # head_to_head/*.pt are 64² phantom recons; never pair them with DICOM GT from benchmark_snapshot
+    if methods:
+        gt = None
+        o = load_torch(h2h / "test_ground_truth.pt")
+        if o and "y_test" in o:
+            gt = o["y_test"][0, 0].numpy()
+    elif gt is None:
         o = load_torch(h2h / "test_ground_truth.pt")
         if o and "y_test" in o:
             gt = o["y_test"][0, 0].numpy()
@@ -429,6 +435,8 @@ def figure_error_maps(
         if "preds" not in d:
             continue
         pr = d["preds"][0, 0].numpy()
+        if pr.shape != gt.shape:
+            continue
         err = np.abs(pr - gt)
         emax = max(emax, err.max())
         arrs.append(err)
