@@ -20,6 +20,7 @@ if TYPE_CHECKING:
     from pydicom.dataset import FileDataset
 
 from mri_recon.config import (
+    ACCELERATION_CENTER_FRACTION,
     DATA_CACHE_DIR,
     DEFAULT_COLLECTION,
     MASK_CENTER_FRACTION,
@@ -37,8 +38,11 @@ __all__ = [
     "download_series_if_needed",
     "kspace_fftshift_from_image",
     "load_dicom_series_from_dir",
+    "normalize_percentile_01",
+    "spec_train_val_test_indices",
     "subsample_train_indices",
     "synthetic_phantom_stack",
+    "take_n_shuffled_train",
     "train_val_test_indices",
     "undersample_stack",
     "zero_filled_image",
@@ -126,6 +130,23 @@ def download_series_if_needed(
     return download_path
 
 
+def normalize_percentile_01(x: torch.Tensor, p_low: float = 1.0, p_high: float = 99.0) -> torch.Tensor:
+    """
+    Clip to [p_low, p_high] percentiles per tensor (or per-image if 4D), scale to [0, 1].
+    Spec §10: uniform 99th-percentile style normalization across methods.
+    """
+    if x.dim() == 4:
+        out = []
+        for i in range(x.shape[0]):
+            out.append(normalize_percentile_01(x[i : i + 1], p_low, p_high))
+        return torch.cat(out, dim=0)
+    flat = x.flatten()
+    lo = torch.quantile(flat, p_low / 100.0)
+    hi = torch.quantile(flat, p_high / 100.0)
+    z = (x - lo) / (hi - lo + 1e-12)
+    return torch.clamp(z, 0.0, 1.0)
+
+
 def create_variable_density_mask(
     h: int,
     w: int,
@@ -170,18 +191,20 @@ def build_mask(
     w: int,
     acceleration: int,
     seed: int,
-    center_fraction: float = MASK_CENTER_FRACTION,
+    center_fraction: float | None = None,
     device: torch.device | str = "cpu",
 ) -> torch.Tensor:
     """
-    Build undersampling mask for a target acceleration factor R ∈ {4, 6, 8}.
+    Build undersampling mask for R ∈ {4, 6, 8}.
 
-    Passes `accel=float(acceleration)` into the variable-density recipe from
-    Week 10. This is an effective undersampling model, not true Cartesian
-    parallel imaging.
+    Uses spec §3 center fractions when ``center_fraction`` is None:
+    4× → 8%, 6× → 6%, 8× → 4%.
     """
+    cf = center_fraction if center_fraction is not None else ACCELERATION_CENTER_FRACTION.get(
+        int(acceleration), MASK_CENTER_FRACTION
+    )
     return create_variable_density_mask(
-        h, w, center_fraction=center_fraction, accel=float(acceleration), seed=seed, device=device
+        h, w, center_fraction=cf, accel=float(acceleration), seed=seed, device=device
     )
 
 
@@ -270,6 +293,42 @@ def subsample_train_indices(
     rng = np.random.default_rng(seed)
     perm = rng.permutation(len(pool))[:n_train]
     return sorted(pool[i] for i in perm)
+
+
+def take_n_shuffled_train(train_indices: Sequence[int], n: int, seed: int) -> List[int]:
+    """
+    Spec §4: first N indices after shuffling the train pool (fixed seed).
+
+    Order follows the shuffled permutation (not sorted) so the first 8 are
+    literally the first 8 in the permuted order.
+    """
+    pool = list(train_indices)
+    if n >= len(pool):
+        return pool
+    rng = np.random.default_rng(seed)
+    order = rng.permutation(len(pool)).tolist()
+    return [pool[i] for i in order[:n]]
+
+
+def spec_train_val_test_indices(
+    n_total: int,
+    n_train: int = 67,
+    n_test: int = 14,
+    seed: int = 42,
+) -> Tuple[List[int], List[int], List[int]]:
+    """
+    Spec §3–5: fixed train/test sizes from a global shuffle.
+
+    Remaining slices are validation. Requires ``n_total >= n_train + n_test``.
+    """
+    if n_total < n_train + n_test:
+        raise ValueError(f"n_total ({n_total}) must be >= n_train + n_test ({n_train + n_test})")
+    rng = np.random.default_rng(seed)
+    perm = rng.permutation(n_total)
+    test_idx = perm[:n_test].tolist()
+    train_idx = perm[n_test : n_test + n_train].tolist()
+    val_idx = perm[n_test + n_train :].tolist()
+    return sorted(train_idx), sorted(val_idx), sorted(test_idx)
 
 
 def synthetic_phantom_stack(

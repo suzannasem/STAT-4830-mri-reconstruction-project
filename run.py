@@ -2,12 +2,15 @@
 """
 Run from the repo root without installing the package (adds src/ to path).
 
-  python run.py           # pipeline demo
-  python run.py demo
-  python run.py test
-  python run.py all
+  python run.py                    # full benchmark + benchmark_snapshot.pt + 6 publication figures
+  python run.py --quick            # fast smoke (same outputs, shorter training)
+  python run.py --dicom DIR        # load DICOM series from DIR (middle slices → H×W)
+  python run.py --experiments      # also run head-to-head + accel + data sweeps, refresh figures
+  python run.py visualize          # regenerate figures from results/ only
+  python run.py demo               # zero-filled PSNR sweep only
+  python run.py test               # pytest
 
-After `pip install -e .`, you can use: mri-recon [demo|test|all]
+After `pip install -e .`, use: mri-recon [options] [command]
 """
 
 from __future__ import annotations

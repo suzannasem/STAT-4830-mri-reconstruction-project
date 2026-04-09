@@ -1,11 +1,14 @@
 """
-Command-line entry: demo pipeline, run tests, ensure output directories.
+Command-line entry: cohesive notebook-style pipeline (benchmark + figures + optional sweeps).
 
 Usage:
-  mri-recon              # same as demo
-  mri-recon demo
-  mri-recon test
-  mri-recon all          # tests then demo
+  python run.py                      # full benchmark + publication figures
+  python run.py --quick              # fast smoke
+  python run.py --dicom /path/to/dcm   # real slices (resize to config H×W)
+  python run.py --experiments        # also head-to-head + accel + data sweeps (long)
+  python run.py visualize            # regenerate figures from results/ only
+  python run.py demo                 # zero-filled sweep only
+  python run.py test                 # pytest
 """
 
 from __future__ import annotations
@@ -23,6 +26,7 @@ from mri_recon.config import (
     PROJECT_ROOT,
     RESULTS_DIR,
     TRAIN_SLICE_COUNTS,
+    get_device,
 )
 from mri_recon.data_pipeline import (
     build_mask,
@@ -35,18 +39,93 @@ from mri_recon.metrics import psnr, ssim
 
 
 def ensure_directories() -> None:
-    """Create cache, results, and figures dirs from config."""
     for p in (DATA_CACHE_DIR, RESULTS_DIR, FIGURES_DIR):
         p.mkdir(parents=True, exist_ok=True)
 
 
+def run_visualize_only() -> int:
+    ensure_directories()
+    from mri_recon.visualize import generate_publication_figures
+
+    print()
+    print("  Regenerating publication figures from results/")
+    print("  " + "-" * 52)
+    paths = generate_publication_figures()
+    for k, v in paths.items():
+        print(f"    {k}: {v or '(skipped — missing inputs)'}")
+    print()
+    return 0
+
+
+def run_experiment_sweeps(*, quick: bool = False) -> None:
+    from mri_recon.experiments.acceleration_sweep import run_acceleration_sweep
+    from mri_recon.experiments.data_efficiency_sweep import run_data_efficiency_sweep
+    from mri_recon.experiments.head_to_head import run_head_to_head
+
+    print("  Running head-to-head (spec Exp 3) …")
+    run_head_to_head(fast=quick)
+    print("  Running acceleration sweep (spec Exp 1) …")
+    run_acceleration_sweep(fast=quick)
+    print("  Running data-efficiency sweep (spec Exp 2) …")
+    run_data_efficiency_sweep(fast=quick)
+
+
+def run_full(
+    *,
+    quick: bool = False,
+    dicom_dir: str | None = None,
+    experiments: bool = False,
+) -> int:
+    """Train/eval all reconstructors; save snapshot + CSV; build publication figures."""
+    ensure_directories()
+    from mri_recon.benchmark import BenchmarkConfig, run_benchmark
+    from mri_recon.visualize import generate_publication_figures
+
+    print()
+    print("  MRI reconstruction — cohesive run (benchmark + figures)")
+    print("  " + "-" * 52)
+    print(f"  Project root: {PROJECT_ROOT}")
+    print(f"  Device:       {get_device()}")
+    print(f"  Results:      {RESULTS_DIR / 'benchmark.csv'}")
+    print(f"  Snapshot:     {RESULTS_DIR / 'benchmark_snapshot.pt'}")
+    print(f"  Figures:      {FIGURES_DIR}/  and  results/figures/")
+    if dicom_dir:
+        print(f"  Data:         DICOM dir {dicom_dir}")
+    if experiments:
+        print("  Also running: head-to-head + accel + data sweeps (long).")
+    print()
+
+    cfg = BenchmarkConfig(dicom_dir=dicom_dir) if dicom_dir else BenchmarkConfig()
+    out = run_benchmark(cfg, quick=quick)
+    print("  Publication figures (from available results) …")
+    fig_paths = generate_publication_figures()
+    for k, v in sorted(fig_paths.items()):
+        print(f"    {k}: {v or '(skipped)'}")
+
+    if experiments:
+        print()
+        run_experiment_sweeps(quick=quick)
+        print("  Refreshing publication figures after sweeps …")
+        fig_paths = generate_publication_figures()
+        for k, v in sorted(fig_paths.items()):
+            print(f"    {k}: {v or '(skipped)'}")
+
+    print()
+    print("  Methods evaluated:")
+    for row in out["rows"]:
+        print(
+            f"    {row['method']:<22}  PSNR {row['psnr']:7.2f} dB   SSIM {row['ssim']:.4f}"
+        )
+    print()
+    print("  Done.")
+    print()
+    return 0
+
+
 def run_demo(h: int = 128, w: int = 128, num_slices: int = 8, seed: int = 0) -> int:
-    """
-    Synthetic end-to-end check: mask per R, undersample, PSNR/SSIM vs ground truth.
-    """
     ensure_directories()
     print()
-    print("  MRI reconstruction — pipeline demo (synthetic data)")
+    print("  MRI reconstruction — pipeline demo (zero-filled sweep only)")
     print("  " + "-" * 52)
     print(f"  Project root: {PROJECT_ROOT}")
     print(f"  Output dirs:  {RESULTS_DIR}, {FIGURES_DIR}")
@@ -80,14 +159,12 @@ def run_demo(h: int = 128, w: int = 128, num_slices: int = 8, seed: int = 0) -> 
     print()
     print("  Spec training slice counts:", list(TRAIN_SLICE_COUNTS))
     print()
-    print("  Done. Experiment runners (acceleration / data_budget / leaderboard)")
-    print("  are next to wire to trained models — see src/mri_recon/experiments/")
+    print("  Run `python run.py` for the full benchmark + publication figures.")
     print()
     return 0
 
 
 def run_tests() -> int:
-    """Run pytest against the project tests/ directory."""
     ensure_directories()
     tests_dir = PROJECT_ROOT / "tests"
     if not tests_dir.is_dir():
@@ -107,17 +184,43 @@ def run_tests() -> int:
 def main(argv: list[str] | None = None) -> int:
     parser = argparse.ArgumentParser(
         prog="mri-recon",
-        description="MRI reconstruction project: demo pipeline, run tests.",
+        description="MRI reconstruction: benchmark, DICOM, experiment sweeps, publication figures.",
     )
-    sub = parser.add_subparsers(dest="command", help="Command (default: demo)")
+    parser.add_argument(
+        "--quick",
+        action="store_true",
+        help="Faster benchmark and shorter experiment sweeps",
+    )
+    parser.add_argument(
+        "--dicom",
+        type=str,
+        default=None,
+        metavar="DIR",
+        help="Directory of DICOMs (uses middle slices; resized to benchmark H×W)",
+    )
+    parser.add_argument(
+        "--experiments",
+        action="store_true",
+        help="After benchmark, run head-to-head + acceleration + data-efficiency sweeps",
+    )
+    sub = parser.add_subparsers(dest="command", help="Command (default: full pipeline)")
 
-    sub.add_parser("demo", help="Synthetic k-space demo + metrics table")
+    sub.add_parser("full", help="Same as default: benchmark + figures")
+
+    sub.add_parser("visualize", help="Regenerate publication figures from results/ only")
+
+    sub.add_parser("demo", help="Zero-filled acceleration sweep only (fast)")
+
     sub.add_parser("test", help="Run pytest on tests/")
-    sub.add_parser("all", help="Run tests, then demo")
+
+    sub.add_parser("all", help="Run pytest, then full pipeline (no --quick)")
 
     args = parser.parse_args(argv)
     cmd = args.command
-    if cmd is None or cmd == "demo":
+
+    if cmd == "visualize":
+        return run_visualize_only()
+    if cmd == "demo":
         return run_demo()
     if cmd == "test":
         return run_tests()
@@ -125,7 +228,15 @@ def main(argv: list[str] | None = None) -> int:
         code = run_tests()
         if code != 0:
             return code
-        return run_demo()
+        return run_full(quick=False, dicom_dir=None, experiments=False)
+
+    if cmd is None or cmd == "full":
+        return run_full(
+            quick=bool(args.quick),
+            dicom_dir=args.dicom,
+            experiments=bool(args.experiments),
+        )
+
     parser.print_help()
     return 1
 

@@ -1,13 +1,7 @@
-"""
-Self-supervised reconstructors.
-
-Significance: Noise2Void (or similar blind-spot) training does not use ground
-truth in the loss; it predicts masked pixels from neighbors. Used to fill the
-“self-supervised tier” in the experiment spec alongside supervised methods.
-
-Not present in Week 10 notebook; implemented to match standard N2V for 1-channel MRI.
-"""
+"""Self-supervised denoising — see `noise2void_style.py`."""
 
 from __future__ import annotations
 
-NOISE2VOID_ID = "noise2void"
+from mri_recon.reconstructors.noise2void_style import NOISE2VOID_ID
+
+__all__ = ["NOISE2VOID_ID"]
