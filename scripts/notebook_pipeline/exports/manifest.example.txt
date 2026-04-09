@@ -1,0 +1,2 @@
+# One basename per line (files in this directory). Ran in order by run_all_exports.py --manifest
+week12_self_supervised_colab.py

@@ -80,15 +80,26 @@ Remember:
 your-repo/
 ├── README.md                    # This file
 ├── report.md                    # Your project report
+├── run.py                       # Runs Colab exports (see scripts/notebook_pipeline/)
 ├── notebooks/                   # Jupyter notebooks
-├── src/                        # Source code
-├── tests/                      # Test files
-└── docs/
-    ├── finding_project_ideas.md    # Guide to finding your project
-    ├── assignments/                # Assignment instructions
-    ├── llm_exploration/           # AI conversation logs
-    └── development_log.md         # Progress & decisions
+├── scripts/notebook_pipeline/   # Colab .py exports + batch runner
+├── docs/
+│   ├── finding_project_ideas.md
+│   ├── assignments/
+│   └── llm_exploration/
+└── ...
 ```
+
+### MRI reconstruction (notebook-first)
+
+The previous packaged `mri_recon` library has been removed. Run Colab-exported code instead:
+
+```bash
+pip install -e ".[notebook]"
+python run.py
+```
+
+Exports live in `scripts/notebook_pipeline/exports/`. Outputs: `results/notebook_pipeline/runs/<timestamp>/`.
 
 ## Development Environment
 

@@ -8,7 +8,7 @@ local/
 # Matplotlib font/cache when MPLCONFIGDIR points under the repo
 .matplotlib/
 
-# MRI experiment outputs and cached DICOM (see src/mri_recon/config.py)
+# Notebook / TCIA cache and experiment outputs
 data/cache/
 results/
 figures/

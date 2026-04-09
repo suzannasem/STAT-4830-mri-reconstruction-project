@@ -1,30 +1,23 @@
 #!/usr/bin/env python3
 """
-Run from the repo root without installing the package (adds src/ to path).
+Run Colab-exported notebooks from ``scripts/notebook_pipeline/exports/``.
 
-  python run.py                    # full benchmark + benchmark_snapshot.pt + 6 publication figures
-  python run.py --quick            # fast smoke (same outputs, shorter training)
-  python run.py --presentation --dicom data/cache   # long GPU run: heavy training + all experiment sweeps + figures
-  python run.py --dicom DIR        # real DICOMs: 256×256, spec train budget (see --help for overrides)
-  python run.py --experiments      # also run head-to-head + accel + data sweeps, refresh figures
-  python run.py visualize          # regenerate figures from results/ only
-  python run.py demo               # zero-filled PSNR sweep only
-  python run.py test               # pytest
+  python run.py
+  python run.py --only week12_self_supervised_colab.py
+  python run.py --out results/my_run
 
-After `pip install -e .`, use: mri-recon [options] [command]
+(Options are passed straight through to ``run_all_exports.main``.)
 """
 
 from __future__ import annotations
 
+import runpy
 import sys
 from pathlib import Path
 
-_ROOT = Path(__file__).resolve().parent
-_SRC = _ROOT / "src"
-if str(_SRC) not in sys.path:
-    sys.path.insert(0, str(_SRC))
-
-from mri_recon.cli import main
-
 if __name__ == "__main__":
-    raise SystemExit(main())
+    repo = Path(__file__).resolve().parent
+    runner = repo / "scripts" / "notebook_pipeline" / "run_all_exports.py"
+    mod = runpy.run_path(str(runner), run_name="_run_all_exports")
+    argv = sys.argv[1:]
+    raise SystemExit(mod["main"](argv))
