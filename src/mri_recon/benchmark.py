@@ -127,9 +127,14 @@ def run_benchmark(cfg: BenchmarkConfig | None = None, *, quick: bool = False) ->
         raise ValueError("h and w must be multiples of 8 for U-Net / LPGD grid")
 
     if cfg.dicom_dir:
-        root = Path(cfg.dicom_dir)
+        root = Path(cfg.dicom_dir).expanduser().resolve()
         if not root.is_dir():
-            raise FileNotFoundError(f"DICOM directory does not exist: {root}")
+            raise FileNotFoundError(
+                f"DICOM directory does not exist or is not a folder: {root}\n"
+                "  Create it and add .dcm files, e.g. on the server:\n"
+                f"    mkdir -p {root} && rsync -avz your_mac:/path/to/dicoms/ {root}/\n"
+                "  Then pass --dicom to that same path."
+            )
         _datasets, y_full = load_dicom_series_from_dir(root)
         ntot = y_full.shape[0]
         lo = max(0, int(cfg.dicom_middle_slice_fraction[0] * ntot))

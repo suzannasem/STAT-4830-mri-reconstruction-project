@@ -82,7 +82,7 @@ def load_dicom_series_from_dir(root: Path | str) -> Tuple[List["FileDataset"], t
     """
     Load all *.dcm under root, sort by InstanceNumber (fallback: filename).
 
-    Returns (datasets, target_images) with target_images [S, 1, H, W] float32 CPU.
+    Returns (datasets, target_images) with target_images ``[S, 1, H, W]`` float32 CPU.
     """
     import pydicom
 
@@ -104,7 +104,7 @@ def load_dicom_series_from_dir(root: Path | str) -> Tuple[List["FileDataset"], t
     target_list = [dicom_to_target_tensor(ds) for ds in datasets]
     if not target_list:
         raise FileNotFoundError(f"No DICOM files found under {root}")
-    stacked = torch.stack(target_list, dim=0).unsqueeze(1)
+    stacked = torch.stack(target_list, dim=0)  # [S, 1, H, W]
     return datasets, stacked
 
 
