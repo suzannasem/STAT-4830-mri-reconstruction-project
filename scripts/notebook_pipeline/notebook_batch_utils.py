@@ -125,3 +125,56 @@ def scrape_metrics_from_executed_notebook(path: Path) -> dict[str, float]:
     except (OSError, json.JSONDecodeError):
         return {}
     return scrape_metrics_from_text(notebook_to_plaintext(nb))
+
+
+def scrape_methods_from_text(text: str) -> list[dict]:
+    """Parse lines: ``MRI_METHOD_RESULT {"method_id": "...", "psnr": ...}`` (one JSON object per line)."""
+    out: list[dict] = []
+    for line in text.splitlines():
+        s = line.strip()
+        if not s.startswith("MRI_METHOD_RESULT"):
+            continue
+        rest = s[len("MRI_METHOD_RESULT") :].strip()
+        try:
+            obj = json.loads(rest)
+        except json.JSONDecodeError:
+            continue
+        if isinstance(obj, dict):
+            out.append(obj)
+    return out
+
+
+def scrape_methods_from_executed_notebook(path: Path) -> list[dict]:
+    try:
+        nb = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    return scrape_methods_from_text(notebook_to_plaintext(nb))
+
+
+def load_methods_summary_json(path: Path) -> list[dict] | None:
+    """Load ``methods_summary.json``: either a JSON list of objects or ``{"methods": [...]}``."""
+    if not path.is_file():
+        return None
+    try:
+        data = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return None
+    if isinstance(data, list):
+        return [x for x in data if isinstance(x, dict)]
+    if isinstance(data, dict):
+        m = data.get("methods")
+        if isinstance(m, list):
+            return [x for x in m if isinstance(x, dict)]
+    return None
+
+
+def normalize_method_dict(m: dict) -> dict:
+    """Copy metric keys for plotting (``psnr_db`` -> ``psnr``)."""
+    out = dict(m)
+    if "psnr" not in out and out.get("psnr_db") is not None:
+        try:
+            out["psnr"] = float(out["psnr_db"])
+        except (TypeError, ValueError):
+            pass
+    return out

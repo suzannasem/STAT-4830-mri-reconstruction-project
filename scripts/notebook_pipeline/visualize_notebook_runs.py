@@ -68,8 +68,7 @@ def render_comparison_figures(run_root: Path) -> None:
     fig.savefig(out_dir / "runtime_status.png", dpi=150)
     plt.close(fig)
 
-    merged_json_metrics: list[dict[str, float]] = []
-    for r in rows:
+    def _row_merged_metrics(r: dict) -> dict[str, float]:
         m: dict[str, float] = dict(r.get("scraped_metrics") or {})
         mf = r.get("metrics_file")
         if isinstance(mf, dict):
@@ -80,7 +79,32 @@ def render_comparison_figures(run_root: Path) -> None:
             pdb = mf.get("psnr_db")
             if isinstance(pdb, (int, float)) and "psnr" not in m:
                 m["psnr"] = float(pdb)
-        merged_json_metrics.append(m)
+        return m
+
+    merged_json_metrics: list[dict[str, float]] = []
+    for r in rows:
+        merged_json_metrics.append(_row_merged_metrics(r))
+
+    # Per-method bars when notebooks emit ``methods`` (see notebook_batch_utils)
+    method_labels: list[str] = []
+    method_metrics: list[dict[str, float]] = []
+    for r in rows:
+        slug = r.get("slug") or "nb"
+        for md in r.get("methods") or []:
+            if not isinstance(md, dict):
+                continue
+            mid = md.get("method_id") or md.get("name") or "method"
+            method_labels.append(f"{slug}::{mid}")
+            mm: dict[str, float] = {}
+            for k, v in md.items():
+                if k in ("method_id", "name"):
+                    continue
+                if isinstance(v, (int, float)):
+                    mm[k] = float(v)
+            pdb = md.get("psnr_db")
+            if isinstance(pdb, (int, float)) and "psnr" not in mm:
+                mm["psnr"] = float(pdb)
+            method_metrics.append(mm)
 
     metric_names = sorted({k for m in merged_json_metrics for k in m.keys()})
 
@@ -109,6 +133,34 @@ def render_comparison_figures(run_root: Path) -> None:
         fig.savefig(out_dir / "metrics_by_notebook.png", dpi=150)
         plt.close(fig)
 
+    if method_labels and method_metrics:
+        met_names = sorted({k for m in method_metrics for k in m.keys()})
+        if met_names:
+            n_m = len(method_labels)
+            n_met = len(met_names)
+            x = np.arange(n_m)
+            w = 0.8 / max(n_met, 1)
+            fig, ax = plt.subplots(figsize=(max(10, n_m * 0.55), 5))
+            for i, mn in enumerate(met_names):
+                vals = [m.get(mn) for m in method_metrics]
+                heights = [v if v is not None else 0.0 for v in vals]
+                ax.bar(
+                    x + (i - (n_met - 1) / 2) * w,
+                    heights,
+                    width=w,
+                    label=mn.upper(),
+                )
+            ax.set_xticks(x)
+            ax.set_xticklabels(method_labels, rotation=35, ha="right", fontsize=8)
+            ax.set_ylabel("Value")
+            ax.set_title("Per-method metrics (from methods[] / MRI_METHOD_RESULT)")
+            ax.legend()
+            ax.grid(True, axis="y", alpha=0.3)
+            fig.tight_layout()
+            fig.savefig(out_dir / "metrics_by_method.png", dpi=150)
+            plt.close(fig)
+
+    if metric_names:
         # --- 3) Normalized heatmap ---
         mat = np.full((n_notebooks, n_met), np.nan)
         for i, m in enumerate(merged_json_metrics):
@@ -215,7 +267,7 @@ def render_comparison_figures(run_root: Path) -> None:
     csv_path = out_dir / "runs_table.csv"
     with csv_path.open("w", newline="", encoding="utf-8") as f:
         w = csv.writer(f)
-        w.writerow(["notebook", "slug", "exit_code", "duration_s", "scraped_json"])
+        w.writerow(["notebook", "slug", "exit_code", "duration_s", "scraped_json", "methods_json"])
         for r in rows:
             w.writerow(
                 [
@@ -224,6 +276,7 @@ def render_comparison_figures(run_root: Path) -> None:
                     r.get("exit_code", ""),
                     r.get("duration_s", ""),
                     json.dumps(r.get("scraped_metrics") or {}, sort_keys=True),
+                    json.dumps(r.get("methods") or [], sort_keys=True),
                 ]
             )
     print(f"Wrote figures under {out_dir}")
@@ -264,6 +317,23 @@ def main(argv: list[str] | None = None) -> int:
                     fresh = _nbu.scrape_metrics_from_executed_notebook(p)
                     if fresh and fresh != row.get("scraped_metrics"):
                         row["scraped_metrics"] = fresh
+                        updated = True
+                    merged_m: list[dict] = []
+                    mf = _nbu.load_methods_summary_json(p.parent / "methods_summary.json")
+                    if mf:
+                        merged_m.extend(mf)
+                    from_nb = _nbu.scrape_methods_from_executed_notebook(p)
+                    seen = {m.get("method_id") for m in merged_m if m.get("method_id")}
+                    for m in from_nb:
+                        mid = m.get("method_id")
+                        if mid and mid in seen:
+                            continue
+                        if mid:
+                            seen.add(mid)
+                        merged_m.append(m)
+                    norm = [_nbu.normalize_method_dict(m) for m in merged_m]
+                    if norm != row.get("methods"):
+                        row["methods"] = norm
                         updated = True
         if updated:
             summary_path.write_text(json.dumps(data, indent=2), encoding="utf-8")

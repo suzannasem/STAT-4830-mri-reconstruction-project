@@ -102,14 +102,16 @@ python run.py
 
 Exports live in `scripts/notebook_pipeline/exports/`. Outputs: `results/notebook_pipeline/runs/<timestamp>/`.
 
-To **execute local `.ipynb` files** (for example your Downloads folder), install the extra runner and use:
+To **execute local `.ipynb` files**, install the extra runner and run from the repo root (default directory is `notebooks/`; override with `--dir` or `NOTEBOOK_DIR`):
 
 ```bash
-pip install -e ".[notebook-run]"
-python run_ipynb.py --dir "/path/to/Notebooks Download Apr 9 2026"
+pip install -e ".[notebook-run,notebook]"
+python run_ipynb.py
 ```
 
-Artifacts: `results/notebook_runs/<timestamp>/` plus `comparison/` figures (`runtime_status.png`, `metrics_by_notebook.png`, `metrics_heatmap.png`, `compute_vs_quality.png`, `radar_multimetric.png`). Re-plot an old run with `python scripts/notebook_pipeline/visualize_notebook_runs.py --latest`.
+Per-method metrics: write `methods_summary.json` under the run slug dir or print lines `MRI_METHOD_RESULT {"method_id":"my_method","psnr_db":30.0,"ssim":0.75}` so `combined_summary.json` includes a `methods` list (see `scripts/notebook_pipeline/notebook_batch_utils.py`).
+
+Artifacts: `results/notebook_runs/<timestamp>/` plus `comparison/` figures (`runtime_status.png`, `metrics_by_notebook.png`, optional `metrics_by_method.png`, heatmap, etc.). Re-plot an old run with `python scripts/notebook_pipeline/visualize_notebook_runs.py --latest`.
 
 ## Development Environment
 

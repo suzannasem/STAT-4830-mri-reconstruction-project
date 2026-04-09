@@ -8,15 +8,17 @@ Requires: ``pip install -e ".[notebook-run]"`` (nbconvert + kernel).
 Example::
 
   pip install -e ".[notebook-run]"
-  python scripts/notebook_pipeline/run_all_ipynb.py \\
-    --dir "/Users/me/Downloads/Notebooks Download Apr 9 2026"
+  python scripts/notebook_pipeline/run_all_ipynb.py
+
+  # or a custom folder (overrides NOTEBOOK_DIR and repo default)
+  python scripts/notebook_pipeline/run_all_ipynb.py --dir /path/to/notebooks
 
 Outputs under ``results/notebook_runs/<timestamp>/``:
 
 - ``<slug>/notebook.ipynb`` — copy of source
 - ``<slug>/executed.ipynb`` — executed notebook
 - ``<slug>/run.log`` — traceback on failure
-- ``combined_summary.json`` — one row per notebook
+- ``combined_summary.json`` — one row per notebook (optional ``methods`` list from ``methods_summary.json`` and/or ``MRI_METHOD_RESULT`` lines)
 - ``comparison/`` — figures from ``visualize_notebook_runs`` (unless ``--no-viz``)
 
 Environment passed to the kernel: ``MPLBACKEND=Agg``, ``MRI_NB_OUT=<run>/<slug>``.
@@ -63,7 +65,7 @@ def main(argv: list[str] | None = None) -> int:
         "--dir",
         type=Path,
         default=None,
-        help="Folder containing .ipynb files (default: NOTEBOOK_DIR env or Downloads path)",
+        help="Folder containing .ipynb files (default: NOTEBOOK_DIR env or <repo>/notebooks)",
     )
     p.add_argument(
         "--out",
@@ -87,18 +89,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--no-viz", action="store_true", help="Skip comparison figures")
     args = p.parse_args(argv)
 
-    default_dir = os.environ.get("NOTEBOOK_DIR")
-    if default_dir:
-        nb_dir = Path(default_dir).expanduser().resolve()
-    else:
-        nb_dir = (
-            Path.home()
-            / "Downloads"
-            / "Notebooks Download Apr 9 2026"
-        ).resolve()
-
     if args.dir is not None:
         nb_dir = args.dir.expanduser().resolve()
+    elif os.environ.get("NOTEBOOK_DIR"):
+        nb_dir = Path(os.environ["NOTEBOOK_DIR"]).expanduser().resolve()
+    else:
+        nb_dir = (_REPO_ROOT / "notebooks").resolve()
 
     ts = time.strftime("%Y%m%d_%H%M%S")
     run_root = (args.out or (_REPO_ROOT / "results" / "notebook_runs" / ts)).resolve()
@@ -186,9 +182,11 @@ def main(argv: list[str] | None = None) -> int:
 
         row["duration_s"] = round(time.perf_counter() - t0, 3)
 
-        # Optional JSON written by notebook exports
+        # Optional JSON written by notebook exports (skip methods-only file here)
         row["metrics_file"] = None
         for candidate in sorted(sub.glob("*_summary.json")) + [sub / "summary.json"]:
+            if candidate.name == "methods_summary.json":
+                continue
             if candidate.is_file():
                 try:
                     row["metrics_file"] = json.loads(candidate.read_text(encoding="utf-8"))
@@ -200,6 +198,22 @@ def main(argv: list[str] | None = None) -> int:
             row["scraped_metrics"] = _nbu.scrape_metrics_from_executed_notebook(executed)
         else:
             row["scraped_metrics"] = {}
+
+        methods: list[dict] = []
+        ms = _nbu.load_methods_summary_json(sub / "methods_summary.json")
+        if ms:
+            methods.extend(ms)
+        if executed.is_file():
+            from_nb = _nbu.scrape_methods_from_executed_notebook(executed)
+            seen = {m.get("method_id") for m in methods if m.get("method_id")}
+            for m in from_nb:
+                mid = m.get("method_id")
+                if mid and mid in seen:
+                    continue
+                if mid:
+                    seen.add(mid)
+                methods.append(m)
+        row["methods"] = [_nbu.normalize_method_dict(m) for m in methods]
 
         summary.append(row)
 
