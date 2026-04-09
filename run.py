@@ -4,6 +4,7 @@ Run from the repo root without installing the package (adds src/ to path).
 
   python run.py                    # full benchmark + benchmark_snapshot.pt + 6 publication figures
   python run.py --quick            # fast smoke (same outputs, shorter training)
+  python run.py --presentation --dicom data/cache   # long GPU run: heavy training + all experiment sweeps + figures
   python run.py --dicom DIR        # real DICOMs: 256×256, spec train budget (see --help for overrides)
   python run.py --experiments      # also run head-to-head + accel + data sweeps, refresh figures
   python run.py visualize          # regenerate figures from results/ only

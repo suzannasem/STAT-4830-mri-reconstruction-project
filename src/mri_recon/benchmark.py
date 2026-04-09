@@ -96,14 +96,45 @@ class BenchmarkConfig:
     dicom_middle_slice_fraction: Tuple[float, float] = (0.1, 0.9)
 
 
+def benchmark_config_for_presentation(cfg: BenchmarkConfig) -> BenchmarkConfig:
+    """Stronger training for demos and final presentations (longer GPU wall time)."""
+    return replace(
+        cfg,
+        kernel_iter=700,
+        cnn_epochs=50,
+        cnn_lr=8e-4,
+        unet_ch=48,
+        res_cnn_ch=48,
+        lpgd_unroll=8,
+        lpgd_ch=48,
+        diffusion_T=200,
+        diffusion_epochs=80,
+        diffusion_time_dim=96,
+        diffusion_width=96,
+        n2v_epochs=30,
+        ssdiff_epochs=50,
+        ssdiff_num_blocks=6,
+        ssdiff_infer_steps=10,
+    )
+
+
 def _eval_pair(pred: torch.Tensor, gt: torch.Tensor) -> tuple[float, float]:
     p = psnr(pred, gt, data_range=1.0).item()
     s = ssim(pred, gt, data_range=1.0).item()
     return p, s
 
 
-def run_benchmark(cfg: BenchmarkConfig | None = None, *, quick: bool = False) -> dict[str, Any]:
+def run_benchmark(
+    cfg: BenchmarkConfig | None = None,
+    *,
+    quick: bool = False,
+    presentation: bool = False,
+) -> dict[str, Any]:
     cfg = cfg or BenchmarkConfig()
+    if presentation and quick:
+        raise ValueError("Choose either presentation-quality training (--presentation) or a fast smoke run (--quick), not both.")
+    if presentation:
+        cfg = benchmark_config_for_presentation(cfg)
     if quick:
         cfg = replace(
             cfg,
@@ -449,6 +480,7 @@ def run_benchmark(cfg: BenchmarkConfig | None = None, *, quick: bool = False) ->
         f"diffusion T={cfg.diffusion_T}, epochs={cfg.diffusion_epochs}  |  "
         f"SSDiff epochs={cfg.ssdiff_epochs}"
         + ("  |  **quick**" if quick else "")
+        + ("  |  **presentation**" if presentation else "")
     )
     save_benchmark_dashboard(
         labels,
@@ -483,6 +515,7 @@ def run_benchmark(cfg: BenchmarkConfig | None = None, *, quick: bool = False) ->
             "train_slices": len(train_idx),
             "dicom_dir": cfg.dicom_dir,
             "quick": quick,
+            "presentation": presentation,
             "rows": rows,
         },
         RESULTS_DIR / "benchmark_snapshot.pt",
@@ -499,4 +532,5 @@ def run_benchmark(cfg: BenchmarkConfig | None = None, *, quick: bool = False) ->
         ],
         "rows": rows,
         "quick": quick,
+        "presentation": presentation,
     }

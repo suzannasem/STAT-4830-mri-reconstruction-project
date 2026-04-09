@@ -91,6 +91,7 @@ def run_experiment_sweeps(*, quick: bool = False) -> None:
 def run_full(
     *,
     quick: bool = False,
+    presentation: bool = False,
     dicom_dir: str | None = None,
     experiments: bool = False,
     benchmark_height: int | None = None,
@@ -135,18 +136,22 @@ def run_full(
     if dicom_dir:
         print(f"  Data:         DICOM dir {dicom_dir}")
         print(f"  Grid:         {cfg.h}×{cfg.w}  |  train cap {cfg.n_train_cap}  |  up to {cfg.num_slices} slices")
-    if experiments:
+    run_sweeps = experiments or presentation
+    if presentation:
+        print("  Mode:        PRESENTATION (full training + spec experiment sweeps)")
+        print("               Expect a long GPU run (often 1–6+ hours depending on GPU and data).")
+    elif experiments:
         print("  Also running: head-to-head + accel + data sweeps (long).")
     print()
-    out = run_benchmark(cfg, quick=quick)
+    out = run_benchmark(cfg, quick=quick, presentation=presentation)
     print("  Publication figures (from available results) …")
     fig_paths = generate_publication_figures()
     for k, v in sorted(fig_paths.items()):
         print(f"    {k}: {v or '(skipped)'}")
 
-    if experiments:
+    if run_sweeps:
         print()
-        run_experiment_sweeps(quick=quick)
+        run_experiment_sweeps(quick=False if presentation else quick)
         print("  Refreshing publication figures after sweeps …")
         fig_paths = generate_publication_figures()
         for k, v in sorted(fig_paths.items()):
@@ -228,10 +233,19 @@ def main(argv: list[str] | None = None) -> int:
         prog="mri-recon",
         description="MRI reconstruction: benchmark, DICOM, experiment sweeps, publication figures.",
     )
-    parser.add_argument(
+    run_mode = parser.add_mutually_exclusive_group()
+    run_mode.add_argument(
         "--quick",
         action="store_true",
         help="Faster benchmark and shorter experiment sweeps",
+    )
+    run_mode.add_argument(
+        "--presentation",
+        action="store_true",
+        help=(
+            "Full training quality: longer epochs, larger nets, then head-to-head + accel + data "
+            "sweeps at full spec epochs (long GPU run). Implies all experiment sweeps. Incompatible with --quick."
+        ),
     )
     parser.add_argument(
         "--dicom",
@@ -274,7 +288,7 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument(
         "--experiments",
         action="store_true",
-        help="After benchmark, run head-to-head + acceleration + data-efficiency sweeps",
+        help="After benchmark, run head-to-head + acceleration + data-efficiency sweeps (included automatically with --presentation)",
     )
     sub = parser.add_subparsers(dest="command", help="Command (default: full pipeline)")
 
@@ -301,11 +315,21 @@ def main(argv: list[str] | None = None) -> int:
         code = run_tests()
         if code != 0:
             return code
-        return run_full(quick=False, dicom_dir=None, experiments=False)
+        return run_full(
+            quick=False,
+            presentation=bool(args.presentation),
+            dicom_dir=args.dicom,
+            experiments=bool(args.experiments),
+            benchmark_height=args.height,
+            benchmark_width=args.width,
+            n_train=args.n_train,
+            num_slices=args.num_slices,
+        )
 
     if cmd is None or cmd == "full":
         return run_full(
             quick=bool(args.quick),
+            presentation=bool(args.presentation),
             dicom_dir=args.dicom,
             experiments=bool(args.experiments),
             benchmark_height=args.height,
