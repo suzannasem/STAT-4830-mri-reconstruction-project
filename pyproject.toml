@@ -19,6 +19,8 @@ dependencies = [
 
 [project.optional-dependencies]
 notebook = ["scikit-image>=0.21", "pandas>=2.0"]
+# Batch-execute local .ipynb trees (nbconvert + kernel) + comparison plots
+notebook-run = ["nbconvert>=7", "nbformat>=5", "ipykernel>=6"]
 dev = ["ruff>=0.1"]
 
 [tool.setuptools]
