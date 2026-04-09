@@ -4,7 +4,7 @@ Command-line entry: cohesive notebook-style pipeline (benchmark + figures + opti
 Usage:
   python run.py                      # full benchmark + publication figures
   python run.py --quick              # fast smoke
-  python run.py --dicom /path/to/dcm   # real slices (resize to config H×W)
+  python run.py --dicom /path/to/dcm # real slices: 256×256, spec train budget (override with flags)
   python run.py --experiments        # also head-to-head + accel + data sweeps (long)
   python run.py visualize            # regenerate figures from results/ only
   python run.py demo                 # zero-filled sweep only
@@ -16,6 +16,7 @@ from __future__ import annotations
 import argparse
 import subprocess
 import sys
+from dataclasses import replace
 
 import torch
 
@@ -23,8 +24,10 @@ from mri_recon.config import (
     ACCELERATION_FACTORS,
     DATA_CACHE_DIR,
     FIGURES_DIR,
+    OUT_SIZE,
     PROJECT_ROOT,
     RESULTS_DIR,
+    SPEC_N_TRAIN,
     TRAIN_SLICE_COUNTS,
     get_device,
 )
@@ -39,6 +42,21 @@ from mri_recon.metrics import psnr, ssim
 
 
 def ensure_directories() -> None:
+    import os
+
+    # Cloud images sometimes disallow ~/.config/matplotlib; use repo-local or /tmp.
+    for mpl_dir in (PROJECT_ROOT / ".matplotlib",):
+        try:
+            mpl_dir.mkdir(parents=True, exist_ok=True)
+            os.environ.setdefault("MPLCONFIGDIR", str(mpl_dir.resolve()))
+            break
+        except OSError:
+            pass
+    else:
+        tmp_mpl = os.path.join(os.environ.get("TMPDIR", "/tmp"), "matplotlib-mri-recon")
+        os.makedirs(tmp_mpl, exist_ok=True)
+        os.environ.setdefault("MPLCONFIGDIR", tmp_mpl)
+
     for p in (DATA_CACHE_DIR, RESULTS_DIR, FIGURES_DIR):
         p.mkdir(parents=True, exist_ok=True)
 
@@ -75,11 +93,36 @@ def run_full(
     quick: bool = False,
     dicom_dir: str | None = None,
     experiments: bool = False,
+    benchmark_height: int | None = None,
+    benchmark_width: int | None = None,
+    n_train: int | None = None,
+    num_slices: int | None = None,
 ) -> int:
     """Train/eval all reconstructors; save snapshot + CSV; build publication figures."""
     ensure_directories()
     from mri_recon.benchmark import BenchmarkConfig, run_benchmark
     from mri_recon.visualize import generate_publication_figures
+
+    cfg = BenchmarkConfig()
+    if dicom_dir:
+        # Notebook-style real data: 256², spec train cap, enough slices for ~67 train indices.
+        h0, w0 = OUT_SIZE
+        cfg = replace(
+            cfg,
+            dicom_dir=dicom_dir,
+            h=h0,
+            w=w0,
+            n_train_cap=SPEC_N_TRAIN,
+            num_slices=120,
+        )
+    if benchmark_height is not None:
+        cfg = replace(cfg, h=benchmark_height)
+    if benchmark_width is not None:
+        cfg = replace(cfg, w=benchmark_width)
+    if n_train is not None:
+        cfg = replace(cfg, n_train_cap=n_train)
+    if num_slices is not None:
+        cfg = replace(cfg, num_slices=num_slices)
 
     print()
     print("  MRI reconstruction — cohesive run (benchmark + figures)")
@@ -91,11 +134,10 @@ def run_full(
     print(f"  Figures:      {FIGURES_DIR}/  and  results/figures/")
     if dicom_dir:
         print(f"  Data:         DICOM dir {dicom_dir}")
+        print(f"  Grid:         {cfg.h}×{cfg.w}  |  train cap {cfg.n_train_cap}  |  up to {cfg.num_slices} slices")
     if experiments:
         print("  Also running: head-to-head + accel + data sweeps (long).")
     print()
-
-    cfg = BenchmarkConfig(dicom_dir=dicom_dir) if dicom_dir else BenchmarkConfig()
     out = run_benchmark(cfg, quick=quick)
     print("  Publication figures (from available results) …")
     fig_paths = generate_publication_figures()
@@ -196,7 +238,38 @@ def main(argv: list[str] | None = None) -> int:
         type=str,
         default=None,
         metavar="DIR",
-        help="Directory of DICOMs (uses middle slices; resized to benchmark H×W)",
+        help=(
+            "Directory of DICOMs (middle slices). Defaults to 256×256, "
+            f"n_train_cap={SPEC_N_TRAIN}, num_slices=120 (spec-style); override with --height/--width/--n-train/--num-slices"
+        ),
+    )
+    parser.add_argument(
+        "--height",
+        type=int,
+        default=None,
+        metavar="H",
+        help="Benchmark image height (default: 64 synthetic; with --dicom: 256 unless set)",
+    )
+    parser.add_argument(
+        "--width",
+        type=int,
+        default=None,
+        metavar="W",
+        help="Benchmark image width (default: 64 synthetic; with --dicom: 256 unless set)",
+    )
+    parser.add_argument(
+        "--n-train",
+        type=int,
+        default=None,
+        metavar="N",
+        help=f"Max training slices (default: 20 synthetic; with --dicom: {SPEC_N_TRAIN})",
+    )
+    parser.add_argument(
+        "--num-slices",
+        type=int,
+        default=None,
+        metavar="N",
+        help="Slices to load from volume (default: 48 synthetic; with --dicom: 120)",
     )
     parser.add_argument(
         "--experiments",
@@ -235,6 +308,10 @@ def main(argv: list[str] | None = None) -> int:
             quick=bool(args.quick),
             dicom_dir=args.dicom,
             experiments=bool(args.experiments),
+            benchmark_height=args.height,
+            benchmark_width=args.width,
+            n_train=args.n_train,
+            num_slices=args.num_slices,
         )
 
     parser.print_help()

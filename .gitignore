@@ -5,6 +5,9 @@ docs/figures/*
 
 local/
 
+# Matplotlib font/cache when MPLCONFIGDIR points under the repo
+.matplotlib/
+
 # MRI experiment outputs and cached DICOM (see src/mri_recon/config.py)
 data/cache/
 results/
