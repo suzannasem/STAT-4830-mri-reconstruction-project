@@ -6,8 +6,10 @@ Used by ``run_all_ipynb.py`` and ``visualize_notebook_runs.py``.
 
 from __future__ import annotations
 
+import base64
 import json
 import re
+from io import BytesIO
 from pathlib import Path
 
 
@@ -92,7 +94,7 @@ def notebook_to_plaintext(nb: dict) -> str:
     return "\n".join(parts)
 
 
-# Last match wins (usually final epoch / summary line)
+# Regexes for all candidate matches (we pick plausible values; see below)
 _METRIC_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     (
         "psnr",
@@ -103,19 +105,58 @@ _METRIC_PATTERNS: list[tuple[str, re.Pattern[str]]] = [
     ("loss", re.compile(r"(?i)(?:val(?:idation)?|test)?\s*loss\s*[\[=:]\s*([0-9.eE+-]+)")),
 ]
 
+# PSNR lines like "Zero-Filled FFT PSNR: 320 dB" are numerical garbage; keep reconstruction-range dB only.
+_PSNR_DB_LO, _PSNR_DB_HI = 5.0, 60.0
+_SSIM_LO, _SSIM_HI = -0.05, 1.0
+_LOSS_HI = 10.0
+
 
 def scrape_metrics_from_text(text: str) -> dict[str, float]:
     found: dict[str, float] = {}
-    for name, pat in _METRIC_PATTERNS:
-        matches = list(pat.finditer(text))
-        if not matches:
-            continue
-        raw = matches[-1].group(1)
-        raw = raw.replace("dB", "").strip()
+
+    psnr_pat = _METRIC_PATTERNS[0][1]
+    last_psnr: float | None = None
+    for m in psnr_pat.finditer(text):
         try:
-            found[name] = float(raw)
+            v = float(m.group(1))
         except ValueError:
             continue
+        if _PSNR_DB_LO <= v <= _PSNR_DB_HI:
+            last_psnr = v
+    if last_psnr is not None:
+        found["psnr"] = last_psnr
+
+    ssim_pat = _METRIC_PATTERNS[1][1]
+    last_ssim: float | None = None
+    for m in ssim_pat.finditer(text):
+        try:
+            v = float(m.group(1))
+        except ValueError:
+            continue
+        if _SSIM_LO <= v <= _SSIM_HI:
+            last_ssim = v
+    if last_ssim is not None:
+        found["ssim"] = max(0.0, min(1.0, last_ssim))
+
+    nmse_pat = _METRIC_PATTERNS[2][1]
+    for m in nmse_pat.finditer(text):
+        try:
+            found["nmse"] = float(m.group(1))
+        except ValueError:
+            continue
+
+    loss_pat = _METRIC_PATTERNS[3][1]
+    last_loss: float | None = None
+    for m in loss_pat.finditer(text):
+        try:
+            v = float(m.group(1))
+        except ValueError:
+            continue
+        if 0.0 <= v <= _LOSS_HI:
+            last_loss = v
+    if last_loss is not None:
+        found["loss"] = last_loss
+
     return found
 
 
@@ -178,3 +219,124 @@ def normalize_method_dict(m: dict) -> dict:
         except (TypeError, ValueError):
             pass
     return out
+
+
+def sanitize_reconstruction_metrics(m: dict[str, float]) -> dict[str, float]:
+    """
+    Drop scraped values that are not comparable reconstruction summary stats
+    (e.g. PSNR parsed from wrong lines, huge ``loss`` from unrelated prints).
+    """
+    out: dict[str, float] = {}
+    if "psnr" in m:
+        try:
+            v = float(m["psnr"])
+        except (TypeError, ValueError):
+            v = float("nan")
+        if 8.0 <= v <= 55.0:
+            out["psnr"] = v
+    if "ssim" in m:
+        try:
+            v = float(m["ssim"])
+        except (TypeError, ValueError):
+            v = float("nan")
+        if -0.05 <= v <= 1.0:
+            out["ssim"] = max(0.0, min(1.0, v))
+    if "loss" in m:
+        try:
+            v = float(m["loss"])
+        except (TypeError, ValueError):
+            v = float("nan")
+        if 0.0 <= v <= 5.0:
+            out["loss"] = v
+    for k in ("nmse", "mse", "ss_loss"):
+        if k in m:
+            try:
+                out[k] = float(m[k])
+            except (TypeError, ValueError):
+                pass
+    return out
+
+
+METHOD_DISPLAY_NAME_BY_SLUG: dict[str, str] = {
+    "srcnn_mfcnn": "SRCNN / MFCNN (kernel pipeline)",
+    "week_10_multi_image_notebook": "Multi-slice supervised (Week 10)",
+    "week_12_notebook": "Multi-slice supervised (Week 12)",
+    "week_12_self_supervised_notebook_v1": "Self-supervised diffusion (v1)",
+    "week_12_self_supervised_notebook_v2": "Self-supervised diffusion (v2)",
+    "week_4_notebook": "Gaussian kernel basis + sparse coding",
+    "week_5_notebook": "Undersampling mask + residual CNN",
+    "week_8_notebook": "Kernel recon + neural residual refine",
+}
+
+
+def methodology_label_from_row(row: dict) -> str:
+    slug = row.get("slug") or ""
+    if slug in METHOD_DISPLAY_NAME_BY_SLUG:
+        return METHOD_DISPLAY_NAME_BY_SLUG[slug]
+    name = (row.get("notebook") or "").replace(".ipynb", "")
+    return name or slug or "?"
+
+
+def extract_png_images_from_notebook(path: Path) -> list:
+    """
+    Decode ``image/png`` outputs from an executed notebook in cell order.
+    Usually the last images are the final comparison figures.
+    """
+    import matplotlib.image as mpimg
+    import numpy as np
+
+    try:
+        nb = json.loads(path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError):
+        return []
+    out: list = []
+    for cell in nb.get("cells", []):
+        for o in cell.get("outputs") or []:
+            data = o.get("data") or {}
+            b64 = data.get("image/png")
+            if not b64:
+                continue
+            if isinstance(b64, list):
+                b64 = "".join(b64)
+            try:
+                raw = base64.b64decode(b64)
+                im = mpimg.imread(BytesIO(raw))
+            except (OSError, ValueError, MemoryError):
+                continue
+            if im.ndim == 2:
+                im = np.stack([im, im, im], axis=-1)
+            elif im.shape[-1] == 4:
+                im = im[..., :3]
+            out.append(im)
+    return out
+
+
+def load_recon_compare_manifest(work_dir: Path) -> dict | None:
+    """Optional ``recon_compare.json`` with ``baseline`` / ``reconstruction`` paths relative to work_dir."""
+    p = work_dir / "recon_compare.json"
+    if not p.is_file():
+        return None
+    try:
+        d = json.loads(p.read_text(encoding="utf-8"))
+    except json.JSONDecodeError:
+        return None
+    return d if isinstance(d, dict) else None
+
+
+def load_image_path(work_dir: Path, rel: str):
+    """Load image as float RGB array for matplotlib (0–1), or None."""
+    import matplotlib.image as mpimg
+    import numpy as np
+
+    fp = (work_dir / rel).resolve()
+    if not fp.is_file():
+        return None
+    try:
+        im = mpimg.imread(fp)
+    except OSError:
+        return None
+    if im.ndim == 2:
+        im = np.stack([im, im, im], axis=-1)
+    elif im.shape[-1] == 4:
+        im = im[..., :3]
+    return im

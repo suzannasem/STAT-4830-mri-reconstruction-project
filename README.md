@@ -111,7 +111,11 @@ python run_ipynb.py
 
 Per-method metrics: write `methods_summary.json` under the run slug dir or print lines `MRI_METHOD_RESULT {"method_id":"my_method","psnr_db":30.0,"ssim":0.75}` so `combined_summary.json` includes a `methods` list (see `scripts/notebook_pipeline/notebook_batch_utils.py`).
 
-Artifacts: `results/notebook_runs/<timestamp>/` plus `comparison/` figures (`runtime_status.png`, `metrics_by_notebook.png`, optional `metrics_by_method.png`, heatmap, etc.). Re-plot an old run with `python scripts/notebook_pipeline/visualize_notebook_runs.py --latest`.
+Artifacts: `results/notebook_runs/<timestamp>/` plus `comparison/` figures: methodology labels (not raw filenames), PSNR/SSIM **sanitized** for plots (typical PSNR 8–55 dB; bogus scrapes dropped), `metrics_by_notebook.png`, `quality_bars_psnr_ssim.png`, optional `metrics_loss_only.png`, `metrics_heatmap.png`, `compute_vs_quality.png`, `radar_multimetric.png`. Re-plot with `python scripts/notebook_pipeline/visualize_notebook_runs.py --run results/notebook_runs/<ts>` or `--latest`.
+
+**Reconstruction montage** (shared baseline vs each method, from embedded notebook figures or saved PNGs):  
+`python scripts/notebook_pipeline/visualize_reconstructions.py --run results/notebook_runs/<ts>`  
+Optional: `--baseline-slug week_5_notebook`, `--baseline-image /path/to/zf.png`, `--method-img-index -1` (last figure per notebook). For precise control, write `recon_compare.json` in a slug folder: `{"baseline":"zf.png","reconstruction":"out.png"}` (paths relative to that folder).
 
 ## Development Environment
 

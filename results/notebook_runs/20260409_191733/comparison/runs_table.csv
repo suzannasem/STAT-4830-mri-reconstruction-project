@@ -1,0 +1,9 @@
+notebook,slug,methodology,exit_code,duration_s,scraped_json,methods_json
+SRCNN MFCNN.ipynb,srcnn_mfcnn,SRCNN / MFCNN (kernel pipeline),0,116.072,{},[]
+Week 10 Multi-Image Notebook.ipynb,week_10_multi_image_notebook,Multi-slice supervised (Week 10),1,15.189,"{""loss"": 0.046804, ""psnr"": 31.122656, ""ssim"": 0.762}",[]
+Week 12 Notebook.ipynb,week_12_notebook,Multi-slice supervised (Week 12),1,15.069,"{""loss"": 0.260723, ""psnr"": 31.323822, ""ssim"": 0.7716}",[]
+Week 12 Self Supervised Notebook v1.ipynb,week_12_self_supervised_notebook_v1,Self-supervised diffusion (v1),0,64.165,"{""loss"": 0.02493, ""psnr"": 24.39, ""ssim"": 0.4055}",[]
+Week 12 Self Supervised Notebook v2.ipynb,week_12_self_supervised_notebook_v2,Self-supervised diffusion (v2),0,59.632,"{""loss"": 0.17593, ""psnr"": 9.5}",[]
+Week 4 Notebook.ipynb,week_4_notebook,Gaussian kernel basis + sparse coding,1,5.122,"{""loss"": 2.9e-05, ""psnr"": 26.6}",[]
+Week 5 Notebook.ipynb,week_5_notebook,Undersampling mask + residual CNN,0,88.348,"{""loss"": 0.0357, ""psnr"": 20.5476}",[]
+Week 8 Notebook.ipynb,week_8_notebook,Kernel recon + neural residual refine,1,88.079,"{""loss"": 0.000169, ""psnr"": 24.6199}",[]

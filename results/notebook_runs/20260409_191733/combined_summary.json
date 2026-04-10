@@ -1,0 +1,138 @@
+[
+  {
+    "notebook": "SRCNN MFCNN.ipynb",
+    "slug": "srcnn_mfcnn",
+    "source_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/notebooks/SRCNN MFCNN.ipynb",
+    "work_dir": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/srcnn_mfcnn",
+    "executed_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/srcnn_mfcnn/executed.ipynb",
+    "log": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/srcnn_mfcnn/run.log",
+    "exit_code": 0,
+    "error": null,
+    "duration_s": 116.072,
+    "metrics_file": null,
+    "scraped_metrics": {},
+    "methods": []
+  },
+  {
+    "notebook": "Week 10 Multi-Image Notebook.ipynb",
+    "slug": "week_10_multi_image_notebook",
+    "source_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/notebooks/Week 10 Multi-Image Notebook.ipynb",
+    "work_dir": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_10_multi_image_notebook",
+    "executed_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_10_multi_image_notebook/executed.ipynb",
+    "log": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_10_multi_image_notebook/run.log",
+    "exit_code": 1,
+    "error": "CellExecutionError: An error occurred while executing the following cell:\n------------------\nfrom pydicom.fileutil import reset_buffer_position\n# Week 4 hyperparameter tuning idea to training set\nclass MultiSliceKernelOptimizer:\n  def __init__(self, target_images, mask, device=\"cuda\"):\n    self.target_images = target_images.to(device)\n    self.mask = mask.to(device)\n    self.device = device\n    self.grid_size = target_images.shape[-1]\n\n  def _coerce_num_kernels(self, num_kernels):\n    # create_kernel_basis uses a square grid of centers, so move to nearest square\n    side = max(4, int(round(np.sqrt(int(num_kernels)))))\n    return side * side\n\n  def reconstruct_single_slice(self, target_image, sigma, num_kernels, lambda_tv=1e-14, max_iter=500, lr=0.01, return_history=False):\n    target_image = target_image.to(device)\n    num_kernels = self._coerce_num_kernels(num_kernels)\n\n    Phi = create_kernel_basis(\n        grid_size=self.grid_size,\n        num_kernels=num_kernels,\n        sigma=float(sigma)\n    ).to(self.device).float()\n\n    c = (torch.randn(num_kernels, device=self.device) * 0.01).requires_grad_(True)\n    optimizer = torch.optim.Adam([c], lr=lr)\n\n    k_full = torch.fft.fftshift(torch.fft.fft2(target_image))\n    y_obs = k_full * self.mask\n\n    loss_history = []\n    for epoch in range(max_iter):\n      optimizer.zero_grad()\n\n      x_recon = (Phi @ c).reshape(self.grid_size, self.grid_size)\n      k_recon = torch.fft.fftshift(torch.fft.fft2(x_recon))\n      y_recon = k_recon * self.mask\n\n      data_loss = torch.mean(torch.abs(y_recon - y_obs) ** 2)\n      tv = tv_loss(x_recon)\n      loss = data_loss + float(lambda_tv) * tv\n\n      loss.backward()\n      optimizer.step()\n\n      if return_history:\n        loss_history.append(loss.item())\n\n    with torch.no_grad():\n      final_recon = (Phi @ c).reshape(self.grid_size, self.grid_size)\n      final_recon = torch.clamp(final_recon, 0.0, 1.0)\n      mse = torch.nn.functional.mse_loss(final_recon, target_image)\n      psnr = 10 * torch.log10(1.0 / (mse + 1e-12))\n\n    out = {\n        \"num_kernels\": num_kernels,\n        \"mse\": mse.item(),\n        \"psnr\": psnr.item(),\n        \"reconstruction\": final_recon.detach()\n    }\n    if return_history:\n      out[\"loss_history\"] = loss_history\n    return out\n\n  def dataset_objective(self, indices, sigma, num_kernels, lambda_tv=1e-4, max_iter=500, lr=0.01):\n    mses, psnrs = [], []\n    for idx in indices:\n      img = self.target_images[idx, 0]\n      out = self.reconstruct_single_slice(\n          img,\n          sigma=sigma,\n          num_kernels=num_kernels,\n          lambda_tv=lambda_tv,\n          max_iter=max_iter,\n          lr=lr,\n          return_history=False\n      )\n      mses.append(out[\"mse\"])\n      psnrs.append(out[\"psnr\"])\n\n    return {\n        \"mean_mse\": float(np.mean(mses)),\n        \"mean_psnr\": float(np.mean(psnrs))\n    }\n\n  def bayes_opt(self, train_indices, n_trials=15, max_iter=400, lr=0.01):\n    def objective(params):\n      sigma, num_kernels, lambda_tv = params\n      stats = self.dataset_objective(\n          train_indices,\n          sigma=sigma,\n          num_kernels=int(num_kernels),\n          lambda_tv=lambda_tv,\n          max_iter=max_iter,\n          lr=lr\n      )\n      print(\n          f\"trial -> sigma={sigma:.4f}, \"\n          f\"num_kernels~={int(num_kernels)}, \"\n          f\"lambda_tv={lambda_tv:.2e}, \"\n          f\"train_mse={stats[\"mean_mse\"]:.6f}, \"\n          f\"train_psnr={stats[\"mean_psnr\"]:.3f} dB\"\n      )\n      return stats[\"mean_mse\"]\n\n    space = [\n        Real(3.0, 15.0, prior=\"log-uniform\", name=\"sigma\"),\n        Integer(1024, 4096, name=\"num_kernels\"),\n        Real(1e-8, 1e-4, prior=\"log-uniform\", name=\"lambda_tv\")\n    ]\n\n    result = gp_minimize(\n        objective,\n        space,\n        n_calls=n_trials,\n        n_initial_points=3,\n        random_state=seed\n    )\n\n    best_sigma = float(result.x[0])\n    best_num_kernels = self._coerce_num_kernels(int(result.x[1]))\n    best_lambda_tv = float(result.x[2])\n\n    return {\n        \"result\": result,\n        \"best_sigma\": best_sigma,\n        \"best_num_kernels\": best_num_kernels,\n        \"best_lambda_tv\": best_lambda_tv\n    }\n------------------\n\n\n\u001b[0;36m  Cell \u001b[0;32mIn[12], line 101\u001b[0;36m\u001b[0m\n\u001b[0;31m    f\"train_mse={stats[\"mean_mse\"]:.6f}, \"\u001b[0m\n\u001b[0m                        ^\u001b[0m\n\u001b[0;31mSyntaxError\u001b[0m\u001b[0;31m:\u001b[0m f-string: unmatched '['\n\n",
+    "duration_s": 15.189,
+    "metrics_file": null,
+    "scraped_metrics": {
+      "psnr": 31.122656,
+      "ssim": 0.762,
+      "loss": 0.046804
+    },
+    "methods": []
+  },
+  {
+    "notebook": "Week 12 Notebook.ipynb",
+    "slug": "week_12_notebook",
+    "source_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/notebooks/Week 12 Notebook.ipynb",
+    "work_dir": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_notebook",
+    "executed_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_notebook/executed.ipynb",
+    "log": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_notebook/run.log",
+    "exit_code": 1,
+    "error": "CellExecutionError: An error occurred while executing the following cell:\n------------------\nfrom pydicom.fileutil import reset_buffer_position\n# Week 4 hyperparameter tuning idea to training set\nclass MultiSliceKernelOptimizer:\n  def __init__(self, target_images, mask, device=\"cuda\"):\n    self.target_images = target_images.to(device)\n    self.mask = mask.to(device)\n    self.device = device\n    self.grid_size = target_images.shape[-1]\n\n  def _coerce_num_kernels(self, num_kernels):\n    # create_kernel_basis uses a square grid of centers, so move to nearest square\n    side = max(4, int(round(np.sqrt(int(num_kernels)))))\n    return side * side\n\n  def reconstruct_single_slice(self, target_image, sigma, num_kernels, lambda_tv=1e-14, max_iter=500, lr=0.01, return_history=False):\n    target_image = target_image.to(device)\n    num_kernels = self._coerce_num_kernels(num_kernels)\n\n    Phi = create_kernel_basis(\n        grid_size=self.grid_size,\n        num_kernels=num_kernels,\n        sigma=float(sigma)\n    ).to(self.device).float()\n\n    c = (torch.randn(num_kernels, device=self.device) * 0.01).requires_grad_(True)\n    optimizer = torch.optim.Adam([c], lr=lr)\n\n    k_full = torch.fft.fftshift(torch.fft.fft2(target_image))\n    y_obs = k_full * self.mask\n\n    loss_history = []\n    for epoch in range(max_iter):\n      optimizer.zero_grad()\n\n      x_recon = (Phi @ c).reshape(self.grid_size, self.grid_size)\n      k_recon = torch.fft.fftshift(torch.fft.fft2(x_recon))\n      y_recon = k_recon * self.mask\n\n      data_loss = torch.mean(torch.abs(y_recon - y_obs) ** 2)\n      tv = tv_loss(x_recon)\n      loss = data_loss + float(lambda_tv) * tv\n\n      loss.backward()\n      optimizer.step()\n\n      if return_history:\n        loss_history.append(loss.item())\n\n    with torch.no_grad():\n      final_recon = (Phi @ c).reshape(self.grid_size, self.grid_size)\n      final_recon = torch.clamp(final_recon, 0.0, 1.0)\n      mse = torch.nn.functional.mse_loss(final_recon, target_image)\n      psnr = 10 * torch.log10(1.0 / (mse + 1e-12))\n\n    out = {\n        \"num_kernels\": num_kernels,\n        \"mse\": mse.item(),\n        \"psnr\": psnr.item(),\n        \"reconstruction\": final_recon.detach()\n    }\n    if return_history:\n      out[\"loss_history\"] = loss_history\n    return out\n\n  def dataset_objective(self, indices, sigma, num_kernels, lambda_tv=1e-4, max_iter=500, lr=0.01):\n    mses, psnrs = [], []\n    for idx in indices:\n      img = self.target_images[idx, 0]\n      out = self.reconstruct_single_slice(\n          img,\n          sigma=sigma,\n          num_kernels=num_kernels,\n          lambda_tv=lambda_tv,\n          max_iter=max_iter,\n          lr=lr,\n          return_history=False\n      )\n      mses.append(out[\"mse\"])\n      psnrs.append(out[\"psnr\"])\n\n    return {\n        \"mean_mse\": float(np.mean(mses)),\n        \"mean_psnr\": float(np.mean(psnrs))\n    }\n\n  def bayes_opt(self, train_indices, n_trials=15, max_iter=400, lr=0.01):\n    def objective(params):\n      sigma, num_kernels, lambda_tv = params\n      stats = self.dataset_objective(\n          train_indices,\n          sigma=sigma,\n          num_kernels=int(num_kernels),\n          lambda_tv=lambda_tv,\n          max_iter=max_iter,\n          lr=lr\n      )\n      print(\n          f\"trial -> sigma={sigma:.4f}, \"\n          f\"num_kernels~={int(num_kernels)}, \"\n          f\"lambda_tv={lambda_tv:.2e}, \"\n          f\"train_mse={stats[\"mean_mse\"]:.6f}, \"\n          f\"train_psnr={stats[\"mean_psnr\"]:.3f} dB\"\n      )\n      return stats[\"mean_mse\"]\n\n    space = [\n        Real(3.0, 15.0, prior=\"log-uniform\", name=\"sigma\"),\n        Integer(1024, 4096, name=\"num_kernels\"),\n        Real(1e-8, 1e-4, prior=\"log-uniform\", name=\"lambda_tv\")\n    ]\n\n    result = gp_minimize(\n        objective,\n        space,\n        n_calls=n_trials,\n        n_initial_points=3,\n        random_state=seed\n    )\n\n    best_sigma = float(result.x[0])\n    best_num_kernels = self._coerce_num_kernels(int(result.x[1]))\n    best_lambda_tv = float(result.x[2])\n\n    return {\n        \"result\": result,\n        \"best_sigma\": best_sigma,\n        \"best_num_kernels\": best_num_kernels,\n        \"best_lambda_tv\": best_lambda_tv\n    }\n------------------\n\n\n\u001b[0;36m  Cell \u001b[0;32mIn[12], line 101\u001b[0;36m\u001b[0m\n\u001b[0;31m    f\"train_mse={stats[\"mean_mse\"]:.6f}, \"\u001b[0m\n\u001b[0m                        ^\u001b[0m\n\u001b[0;31mSyntaxError\u001b[0m\u001b[0;31m:\u001b[0m f-string: unmatched '['\n\n",
+    "duration_s": 15.069,
+    "metrics_file": null,
+    "scraped_metrics": {
+      "psnr": 31.323822,
+      "ssim": 0.7716,
+      "loss": 0.260723
+    },
+    "methods": []
+  },
+  {
+    "notebook": "Week 12 Self Supervised Notebook v1.ipynb",
+    "slug": "week_12_self_supervised_notebook_v1",
+    "source_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/notebooks/Week 12 Self Supervised Notebook v1.ipynb",
+    "work_dir": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_self_supervised_notebook_v1",
+    "executed_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_self_supervised_notebook_v1/executed.ipynb",
+    "log": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_self_supervised_notebook_v1/run.log",
+    "exit_code": 0,
+    "error": null,
+    "duration_s": 64.165,
+    "metrics_file": null,
+    "scraped_metrics": {
+      "psnr": 24.39,
+      "ssim": 0.4055,
+      "loss": 0.02493
+    },
+    "methods": []
+  },
+  {
+    "notebook": "Week 12 Self Supervised Notebook v2.ipynb",
+    "slug": "week_12_self_supervised_notebook_v2",
+    "source_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/notebooks/Week 12 Self Supervised Notebook v2.ipynb",
+    "work_dir": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_self_supervised_notebook_v2",
+    "executed_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_self_supervised_notebook_v2/executed.ipynb",
+    "log": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_12_self_supervised_notebook_v2/run.log",
+    "exit_code": 0,
+    "error": null,
+    "duration_s": 59.632,
+    "metrics_file": null,
+    "scraped_metrics": {
+      "psnr": 9.5,
+      "loss": 0.17593
+    },
+    "methods": []
+  },
+  {
+    "notebook": "Week 4 Notebook.ipynb",
+    "slug": "week_4_notebook",
+    "source_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/notebooks/Week 4 Notebook.ipynb",
+    "work_dir": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_4_notebook",
+    "executed_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_4_notebook/executed.ipynb",
+    "log": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_4_notebook/run.log",
+    "exit_code": 1,
+    "error": "CellExecutionError: An error occurred while executing the following cell:\n------------------\nimport pandas as pd\nimport matplotlib.pyplot as plt\nimport seaborn as sns\nimport torch.nn.functional as F\n------------------\n\n\n\u001b[0;31m---------------------------------------------------------------------------\u001b[0m\n\u001b[0;31mModuleNotFoundError\u001b[0m                       Traceback (most recent call last)\nCell \u001b[0;32mIn[8], line 3\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[38;5;28;01mimport\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01mpandas\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;28;01mas\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01mpd\u001b[39;00m\n\u001b[1;32m      2\u001b[0m \u001b[38;5;28;01mimport\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01mmatplotlib\u001b[39;00m\u001b[38;5;21;01m.\u001b[39;00m\u001b[38;5;21;01mpyplot\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;28;01mas\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01mplt\u001b[39;00m\n\u001b[0;32m----> 3\u001b[0m \u001b[38;5;28;01mimport\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01mseaborn\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;28;01mas\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01msns\u001b[39;00m\n\u001b[1;32m      4\u001b[0m \u001b[38;5;28;01mimport\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01mtorch\u001b[39;00m\u001b[38;5;21;01m.\u001b[39;00m\u001b[38;5;21;01mnn\u001b[39;00m\u001b[38;5;21;01m.\u001b[39;00m\u001b[38;5;21;01mfunctional\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;28;01mas\u001b[39;00m\u001b[38;5;250m \u001b[39m\u001b[38;5;21;01mF\u001b[39;00m\n\n\u001b[0;31mModuleNotFoundError\u001b[0m: No module named 'seaborn'\n",
+    "duration_s": 5.122,
+    "metrics_file": null,
+    "scraped_metrics": {
+      "psnr": 26.6,
+      "loss": 2.9e-05
+    },
+    "methods": []
+  },
+  {
+    "notebook": "Week 5 Notebook.ipynb",
+    "slug": "week_5_notebook",
+    "source_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/notebooks/Week 5 Notebook.ipynb",
+    "work_dir": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_5_notebook",
+    "executed_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_5_notebook/executed.ipynb",
+    "log": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_5_notebook/run.log",
+    "exit_code": 0,
+    "error": null,
+    "duration_s": 88.348,
+    "metrics_file": null,
+    "scraped_metrics": {
+      "psnr": 20.5476,
+      "loss": 0.0357
+    },
+    "methods": []
+  },
+  {
+    "notebook": "Week 8 Notebook.ipynb",
+    "slug": "week_8_notebook",
+    "source_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/notebooks/Week 8 Notebook.ipynb",
+    "work_dir": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_8_notebook",
+    "executed_path": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_8_notebook/executed.ipynb",
+    "log": "/home/ubuntu/STAT-4830-mri-reconstruction-project/results/notebook_runs/20260409_191733/week_8_notebook/run.log",
+    "exit_code": 1,
+    "error": "CellExecutionError: An error occurred while executing the following cell:\n------------------\n#print(type(reconstructed_image))\n#print(type(target_image))\n\n# uncomment this line the first time you run this cell\n#target_image = target_image.detach().cpu().numpy()\n\nevaluate_reconstruction(target_image, reconstructed_image, nn_gaus_img)\n------------------\n\n\n\u001b[0;31m---------------------------------------------------------------------------\u001b[0m\n\u001b[0;31mTypeError\u001b[0m                                 Traceback (most recent call last)\nCell \u001b[0;32mIn[30], line 7\u001b[0m\n\u001b[1;32m      1\u001b[0m \u001b[38;5;66;03m#print(type(reconstructed_image))\u001b[39;00m\n\u001b[1;32m      2\u001b[0m \u001b[38;5;66;03m#print(type(target_image))\u001b[39;00m\n\u001b[1;32m      3\u001b[0m \n\u001b[1;32m      4\u001b[0m \u001b[38;5;66;03m# uncomment this line the first time you run this cell\u001b[39;00m\n\u001b[1;32m      5\u001b[0m \u001b[38;5;66;03m#target_image = target_image.detach().cpu().numpy()\u001b[39;00m\n\u001b[0;32m----> 7\u001b[0m \u001b[43mevaluate_reconstruction\u001b[49m\u001b[43m(\u001b[49m\u001b[43mtarget_image\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mreconstructed_image\u001b[49m\u001b[43m,\u001b[49m\u001b[43m \u001b[49m\u001b[43mnn_gaus_img\u001b[49m\u001b[43m)\u001b[49m\n\nCell \u001b[0;32mIn[28], line 21\u001b[0m, in \u001b[0;36mevaluate_reconstruction\u001b[0;34m(gt, initial, refined)\u001b[0m\n\u001b[1;32m     16\u001b[0m refined \u001b[38;5;241m=\u001b[39m normalize(refined)\n\u001b[1;32m     18\u001b[0m \u001b[38;5;66;03m# Calculate Metrics\u001b[39;00m\n\u001b[1;32m     19\u001b[0m metrics \u001b[38;5;241m=\u001b[39m {\n\u001b[1;32m     20\u001b[0m     \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mInitial\u001b[39m\u001b[38;5;124m\"\u001b[39m: {\n\u001b[0;32m---> 21\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mMSE\u001b[39m\u001b[38;5;124m\"\u001b[39m: np\u001b[38;5;241m.\u001b[39mmean((\u001b[43mgt\u001b[49m\u001b[43m \u001b[49m\u001b[38;5;241;43m-\u001b[39;49m\u001b[43m \u001b[49m\u001b[43minitial\u001b[49m)\u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39m\u001b[38;5;241m2\u001b[39m),\n\u001b[1;32m     22\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mPSNR\u001b[39m\u001b[38;5;124m\"\u001b[39m: psnr(gt, initial, data_range\u001b[38;5;241m=\u001b[39m\u001b[38;5;241m1.0\u001b[39m),\n\u001b[1;32m     23\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mSSIM\u001b[39m\u001b[38;5;124m\"\u001b[39m: ssim(gt, initial, data_range\u001b[38;5;241m=\u001b[39m\u001b[38;5;241m1.0\u001b[39m)\n\u001b[1;32m     24\u001b[0m     },\n\u001b[1;32m     25\u001b[0m     \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mRefined\u001b[39m\u001b[38;5;124m\"\u001b[39m: {\n\u001b[1;32m     26\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mMSE\u001b[39m\u001b[38;5;124m\"\u001b[39m: np\u001b[38;5;241m.\u001b[39mmean((gt \u001b[38;5;241m-\u001b[39m refined)\u001b[38;5;241m*\u001b[39m\u001b[38;5;241m*\u001b[39m\u001b[38;5;241m2\u001b[39m),\n\u001b[1;32m     27\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mPSNR\u001b[39m\u001b[38;5;124m\"\u001b[39m: psnr(gt, refined, data_range\u001b[38;5;241m=\u001b[39m\u001b[38;5;241m1.0\u001b[39m),\n\u001b[1;32m     28\u001b[0m         \u001b[38;5;124m\"\u001b[39m\u001b[38;5;124mSSIM\u001b[39m\u001b[38;5;124m\"\u001b[39m: ssim(gt, refined, data_range\u001b[38;5;241m=\u001b[39m\u001b[38;5;241m1.0\u001b[39m)\n\u001b[1;32m     29\u001b[0m     }\n\u001b[1;32m     30\u001b[0m }\n\u001b[1;32m     32\u001b[0m \u001b[38;5;66;03m# Print Results\u001b[39;00m\n\u001b[1;32m     33\u001b[0m \u001b[38;5;28mprint\u001b[39m(\u001b[38;5;124mf\u001b[39m\u001b[38;5;124m\"\u001b[39m\u001b[38;5;132;01m{\u001b[39;00m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mMetric\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;132;01m:\u001b[39;00m\u001b[38;5;124m<10\u001b[39m\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m | \u001b[39m\u001b[38;5;132;01m{\u001b[39;00m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mGaussian\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;132;01m:\u001b[39;00m\u001b[38;5;124m<12\u001b[39m\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m | \u001b[39m\u001b[38;5;132;01m{\u001b[39;00m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mNeural\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;132;01m:\u001b[39;00m\u001b[38;5;124m<12\u001b[39m\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m | \u001b[39m\u001b[38;5;132;01m{\u001b[39;00m\u001b[38;5;124m'\u001b[39m\u001b[38;5;124mImprovement\u001b[39m\u001b[38;5;124m'\u001b[39m\u001b[38;5;132;01m}\u001b[39;00m\u001b[38;5;124m\"\u001b[39m)\n\nFile \u001b[0;32m~/.local/lib/python3.10/site-packages/torch/_tensor.py:1253\u001b[0m, in \u001b[0;36mTensor.__array__\u001b[0;34m(self, dtype)\u001b[0m\n\u001b[1;32m   1251\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m handle_torch_function(Tensor\u001b[38;5;241m.\u001b[39m__array__, (\u001b[38;5;28mself\u001b[39m,), \u001b[38;5;28mself\u001b[39m, dtype\u001b[38;5;241m=\u001b[39mdtype)\n\u001b[1;32m   1252\u001b[0m \u001b[38;5;28;01mif\u001b[39;00m dtype \u001b[38;5;129;01mis\u001b[39;00m \u001b[38;5;28;01mNone\u001b[39;00m:\n\u001b[0;32m-> 1253\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28;43mself\u001b[39;49m\u001b[38;5;241;43m.\u001b[39;49m\u001b[43mnumpy\u001b[49m\u001b[43m(\u001b[49m\u001b[43m)\u001b[49m\n\u001b[1;32m   1254\u001b[0m \u001b[38;5;28;01melse\u001b[39;00m:\n\u001b[1;32m   1255\u001b[0m     \u001b[38;5;28;01mreturn\u001b[39;00m \u001b[38;5;28mself\u001b[39m\u001b[38;5;241m.\u001b[39mnumpy()\u001b[38;5;241m.\u001b[39mastype(dtype, copy\u001b[38;5;241m=\u001b[39m\u001b[38;5;28;01mFalse\u001b[39;00m)\n\n\u001b[0;31mTypeError\u001b[0m: can't convert cuda:0 device type tensor to numpy. Use Tensor.cpu() to copy the tensor to host memory first.\n",
+    "duration_s": 88.079,
+    "metrics_file": null,
+    "scraped_metrics": {
+      "psnr": 24.6199,
+      "loss": 0.000169
+    },
+    "methods": []
+  }
+]
