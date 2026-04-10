@@ -50,7 +50,7 @@ Here are results for a representative test index:
 
 Again, the zero-filled FFT baseline achieved a better result with a higher PSNR and SSIM and lower MSE. This is similar to the MRI reconstruction, showing that even though both images have different assumptions about their overall shape and structure, the same reconstruction patterns show the same results.
 Finally, we used a diffusion model to compare the kernel reconstruction baseline and the zero-filled FFT baseline. These were the results:
-{}diffusion
+![General Image Diffusion Model Results](../../figures/genimage_diffusion.png)
 
 Here are representative test slices for a visual comparison:
 ![General Image LaPlacian & Diffusion Reconstruction](../../figures/genimage4.png)
