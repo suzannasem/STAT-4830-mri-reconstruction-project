@@ -16,4 +16,9 @@ Loss function: L⁢(θ)=𝔼t,𝐱0,ϵ⁢[‖ϵ−ϵθ⁢(α¯t⁢𝐱0+1−α¯
 
 
 cosine annealing scheduler with no warmup, and no constraints on output), which caused a ‘false’ low loss where the model failed to make many changes from the zero-filled input. We report loss = 0.074, MSE = 0.002, SSIM = 0.427, and PSNR = 26.12 dB.
+![Reconstruction Progress -- Epoch 20](../../figures/MRI1.png)
+
+Using Implementation Steps Above
+Our changes were in an effort to see the model ‘do something,’ even if reconstruction quality declines. We report frequency-weighted loss of 0.167, MSE = 0.110, SSIM = -0.05, and PSNR = 9.59 dB. Though the loss is relatively low, the near-zero SSIM reflects the model’s difficulty in actually creating an image that is similar to the ground truth from the human eye.
+
 
