@@ -252,8 +252,8 @@ In an effort to see the model ‘do something,’ even if reconstruction quality
 - Cosine Annealing Scheduler with warmup: We start with a linear scheduler before switching to cosine annealing so that the model can learn the general shape of the image before dropping the learning rate.   
 - Frequency Weighted Loss: We implemented focal frequency loss because the model had a lot of trouble initially filling in details \- rather, it duplicated the input with minimal changes.
 
-We report frequency-weighted loss of 0.167, MSE \= 0.110, SSIM \= \-0.05, and PSNR \= 9.59 dB. Though the loss is relatively low, the near-zero SSIM reflects the model’s difficulty in actually creating an image that is similar to the ground truth from the human eye.![][image47]  
-![][image48]
+We report frequency-weighted loss of 0.167, MSE \= 0.110, SSIM \= \-0.05, and PSNR \= 9.59 dB. Though the loss is relatively low, the near-zero SSIM reflects the model’s difficulty in actually creating an image that is similar to the ground truth from the human eye.
+***![Figure 14](../../figures/appendix2.png)***
 
 Appendix III: Overview of Multi-Frame Reconstruction Models
 
