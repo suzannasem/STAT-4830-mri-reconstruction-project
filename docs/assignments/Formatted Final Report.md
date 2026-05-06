@@ -45,7 +45,7 @@ We convert the kernel basis from 2D into a frequency in k-space form. To simulat
 
 To evaluate the effectiveness of our approach, we compared Gaussian and LaPlacian kernels to the zero-filled fast Fourier transform as a base case. Gaussian kernels impose smoothness and locality, which are natural structural assumptions for MRI images and help control high-frequencies. Gaussian kernels also create a more stable objective function under gradient-based optimization. Laplacian kernels have sharper boundaries which may be useful for MRI images, where irregularities can be as small as a few pixels. We use the zero-filled Fourier transform as our base case for comparison of reconstruction quality. This transform assigns a value of ‘0,’ meaning no signal is being measured, to all missing values. Results are reported in Figure 1 and Table 2; the Gaussian reconstruction maintained the highest image quality as measured by PSNR and MSE, improving on the zero-filled FFT baseline, while the LaPlacian had lowest image quality.
 
-***![Figure 1](STAT-4830-mri-reconstruction-project/figures/final/fig1.png)***  
+***![Figure 1](../../figures/final/fig1.png)***
 *Figure 1\. Visual Comparison of Kernel-Based Methods. Top Left: Ground Truth Image. Top Right: LaPlacian Reconstruction. Bottom Left: Gaussian Reconstruction. Bottom Right: Zero-Filled FFT.*
 
 | Metric | Gaussian | LaPlacian | Zero-Filled FFT |
