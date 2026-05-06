@@ -60,13 +60,13 @@ To evaluate the effectiveness of our approach, we compared Gaussian and LaPlacia
 	We trained a neural network to map an undersampled image obtained from inverse FFT of k-space to the ground truth image, formulated as [![][image15]](https://www.codecogs.com/eqnedit.php?latex=f_%5Ctheta\(x_u\)%20%3D%20x_t#0) where [![][image16]](https://www.codecogs.com/eqnedit.php?latex=x_u#0) is the undersampled image and [![][image17]](https://www.codecogs.com/eqnedit.php?latex=x_t#0) is the ground truth image.  
 An MRI series of 152 slices was loaded and the same slice that was used for the kernel reconstruction (slice 61\) was held out from the training set. Then, we undersampled the remaining 119 images and trained a small residual CNN on the undersampled images. The held out slice had a baseline PSNR of 20.0367 dB. When testing on the same slice, the neural network reconstruction had a PSNR of 20.5625 dB for an improvement of 0.5258 dB. Thus, the neural network does generalize and improves the baseline, the zero-filled FFT reconstruction, and the LaPlacian reconstruction, but it is very minimal. Figure 2 shows a visual comparison to the ground truth image.
 
-***![Figure 2](STAT-4830-mri-reconstruction-project/figures/final/fig2.png)***  
+***![Figure 2](../../figures/final/fig2.png)***  
 *Figure 2\. Visual comparison of neural network reconstruction.*
 
 ***Warm-Start Neural Network***  
 We implemented a warm-start neural network approach, using the output from the Gaussian kernel reconstruction as the training data for the neural network. We implemented key changes with this experiment: (1) using a U-Net architecture, which uses convolutional layers of encoder neurons and decoder neurons and is optimized for medical imaging purposes, (2) using a different image to test robustness of the model, since so far we’ve only used a single image, (3) using SSIM as an additional success metric, which better quantifies visual differences.  
 This approach, shown in Figure 3, improved MSE by 0.011, PSNR by 118.170 dB, and SSIM by 0.395. It perfectly recreated the target image though we need to train it on more data to make it useful in medical applications. The Gaussian reconstruction (using the new image) had a PSNR of 19.581 dB, MSE \= 0.011, and SSIM \= 0.605, while the warm-start neural network had a PSNR of 137.75, MSE \= 0, and SSIM \= 1.0, meaning the neural network reconstructed image completely matched the target image. This suggests this approach would do well on multiple slices, which we attempt in Section V. The warm-start neural network uses significantly lower memory than the original NN implementation.  
-**![Figure 3]((STAT-4830-mri-reconstruction-project/figures/final/fig3.png))***   
+**![Figure 3](../../figures/final/fig3.png)***   
 *Figure 3\. Warm-Start Neural Network Reconstruction using single-slice.*
 
 ***SCRNN***  
@@ -78,7 +78,7 @@ We also implemented a Super-Resolution Convolutional Neural Network (SRCNN) as a
 | PSNR | 28.78dB | 37.74dB |
 
 *Table 3\. Comparison of SRCNN Metrics to Gaussian Reconstruction*  
-***![Figure 4]((STAT-4830-mri-reconstruction-project/figures/final/fig4.png))***   
+***![Figure 4](../../figures/final/fig4.png)***   
 *Figure 4: Comparison between ground truth (left), kernel output (middle) and SRCNN output (right), shown with an MRI image (top) and normal image (bottom).*
 
 5. **Multi-Slice Training**
@@ -87,12 +87,12 @@ We also implemented a Super-Resolution Convolutional Neural Network (SRCNN) as a
 	The specific hyperparameters optimized were kernel width, number of kernels, and total variation (TV) weight.   
 	To evaluate a candidate set of hyperparameters, we reconstructed multiple training slices and computed reconstruction metrics for each slice. These metrics were then averaged across slices to obtain a single performance score for that hyperparameter configuration. We performed hyperparameter optimization using two different objective functions: mean squared error (MSE) minimization and structural similarity index (SSIM) maximization. This allowed us to compare how optimizing for pixel-wise accuracy (MSE) versus perceptual quality (SSIM) impacts reconstruction performance.  
 	With the updated kernel hyperparameters, we compared this to the baseline reconstruction of zero-filled FFT for a test slice optimized for MSE, shown in Figure 5\.  
-***![Figure 5]((STAT-4830-mri-reconstruction-project/figures/final/fig5.png))***  
+***![Figure 5](../../figures/final/fig5.png)***  
 *Figure 5\. Multi-Slice Reconstruction (MSE) with ground truth (left), kernel (middle) and zero-filled FFT (right).*
 
 Optimizing over MSE showed that the multi-slice Gaussian reconstruction returned a lower PSNR (20.98 dB) compared to the zero-filled FFT baseline (24.82 dB). A similar pattern emerged when optimizing over SSIM (shown in Figure 6 and Table 4), as the baseline maintained a higher SSIM, lower MSE, and higher PSNR relative to the Gaussian and LaPlacian reconstructions. 
 
-***![Figure 6](STAT-4830-mri-reconstruction-project/figures/final/fig6.png)***  
+***![Figure 6](../../figures/final/fig6.png)***  
 *Figure 6\. Multi-Slice Reconstruction (SSIM) with ground truth (top left), zero-filled FFT (top right), LaPlacian (bottom left) and Gaussian (bottom right).*
 
 | Method | MSE | PSNR | SSIM |
@@ -114,7 +114,7 @@ The residual CNN was tested on MSE-optimized and SSIM-optimized kernel reconstru
 | Zero-filled FFT Reconstruction & Residual CNN | 0.000569 | 32.67 dB | 0.6904 |
 
 *Table 5\. Success Metrics for Residual CNN Corrector \+ Kernel and Baseline*  
-***![Figure 7](STAT-4830-mri-reconstruction-project/figures/final/fig7.png)***    
+***![Figure 7](../../figures/final/fig7.png)***    
 *Figure 7\. Visual Comparison of Residual CNN-Corrector applied to MSE-optimized Kernel Reconstruction (top) and SSIM-optimized Kernel Reconstruction (middle) with baseline reconstruction (bottom)*  
 The MSE-optimized kernel reconstruction performed better than the SSIM-optimized version after residual CNN refinement, with lower error, higher PSNR, and higher SSIM. This indicates that the SSIm did not provide a better initialization for the CNN here. Instead, the lower-error MSE-optimized reconstruction gave the residual CNN a stronger starting point. Overall, the zero-filled FFT & residual CNN still performed best across all metrics, showing that zero-filled FFT is the most effective baseline.
 
@@ -130,7 +130,7 @@ The MSE-optimized kernel reconstruction performed better than the SSIM-optimized
 | Zero-filled FFT Reconstruction & Diffusion Model Correction | 0.000778 | 31.09 dB | 0.7625 |
 
 *Table 6\. Success Metrics for Diffusion Corrector \+ Kernel and Baseline*
-***![Figure 8](STAT-4830-mri-reconstruction-project/figures/final/fig8.png)***   
+***![Figure 8](../../figures/final/fig8.png)***   
 *Figure 8\. Visual Comparison of Diffusion-Corrector applied to MSE-optimized Kernel Reconstruction (top) and SSIM-optimized Kernel Reconstruction (middle) with baseline reconstruction (bottom)*  
 	Overall, the diffusion model improved both kernel-based reconstructions and produced the best results when paired with the SSIM-optimized kernel reconstruction. The kernel reconstructions \+ diffusion approach slightly outperformed the baseline across all three metrics, suggesting that the diffusion model was better able to exploit the kernel initialization than previous methods.
 
@@ -142,7 +142,7 @@ Our model is based on [SSDiffRecon](https://arxiv.org/html/2306.16654v2) (Korkma
 
 **Results**  
 For the MSE-based loss, we report loss \= 0.0220, MSE \= 0.0031, SSIM \= 0.3844, and PSNR \= 25.03 dB, while we report loss \= 0.0249, MSE \= 0.6174, SSIM \= 0.4055, and PSNR \= 2.09dB for the SSIM-based loss. We see a major drop in MSE when using SSIM-based loss with modest improvements in SSIM. A visual comparison is available in Figure 9\.  
-***![Figure 9](STAT-4830-mri-reconstruction-project/figures/final/fig9.png)
+***![Figure 9](../../figures/final/fig9.png)
 Figure 9\. Reconstruction using SSDiffRecon (top: MSE, bottom: SSIM)*
 
 8. **General Images**
@@ -153,7 +153,7 @@ The first step was to determine the type of kernel and kernel hyperparameters. F
 
 Notably, this deviates from the MRI reconstruction, where the Gaussian outperformed Laplacian. We also constructed the zero-filled FFT reconstruction as a baseline: optimizing over MSE yielded a mean MSE of 0.003692 and mean PSNR of 24.430 dB, while optimization over SSIM showed a mean MSE of 0.004005, mean PSNR of 24.102 dB, and mean SSIM of 0.6762. We show representative test images in Figure 10\. 
 
-***![Figure 10](STAT-4830-mri-reconstruction-project/figures/final/fig10.png)***   
+***![Figure 10](../../figures/final/fig10.png)***   
 *Figure 10\. Ground truth image (left), LaPlacian kernel reconstruction (middle) and zero-filled baseline (right). Optimized over MSE (top) and SSIM (bottom).*
 
 Similar to the MRI images, zero-filled FFT also achieved a higher PSNR compared to the kernel reconstruction. 
@@ -167,7 +167,7 @@ Next, we trained a residual CNN to correct only the directions that were not alr
 | SSIM | 0.8540 | 0.8589 | 0.9104 |
 
 *Table 7\. Success Metrics for Residual CNN on Kernel Reconstructions and zero-filled FFT baseline.*  
-***![Figure 11](STAT-4830-mri-reconstruction-project/figures/final/fig11.png)***  
+***![Figure 11](../../figures/final/fig11.png)***  
 *Figure 11\. Ground truth image (left), initial reconstruction (middle) and reconstruction with CNN (right). MSE-optimized reconstruction (top), SSIM-optimized reconstruction (middle), and zero-filled FFT baseline (bottom).* 
 
 The residual CNN improved both kernel-based reconstructions, with the SSIM-optimized kernel \+ CNN performing slightly better than the MSE-optimized kernel \+ CNN. This suggests that SSIM optimization provided a slightly better structural initialization for CNN refinement. However, the zero-filled FFT warm start again achieved a better result with a higher PSNR and SSIM and lower MSE. This is similar to the MRI reconstruction, showing that even though both images have different assumptions about their overall shape and structure, the same reconstruction patterns show the same results.
@@ -182,7 +182,7 @@ Finally, we used a diffusion model to compare the kernel reconstructions and the
 
 *Table 8\. Diffusion Model Success Metrics.* 
 
-***![Figure 12](STAT-4830-mri-reconstruction-project/figures/final/fig12.png)***   
+***![Figure 12](../../figures/final/fig12.png)***   
 *Figure 12\. Ground truth image (left), kernel reconstruction (middle) and reconstruction with diffusion model (right). MSE-optimized reconstruction (top), SSIM-optimized reconstruction (middle), and zero-filled FFT baseline (bottom).*
 
 The SSIM-optimized kernel \+ diffusion model performed slightly better than both the MSE-optimized kernel \+ diffusion model and the zero-filled FFT \+ diffusion model. However, the improvement was minimal. This shows that, different from the MRI case, the diffusion model did not substantially improve perceptual structure for images.
@@ -195,7 +195,7 @@ MFCNNs generalize single image CNNs to handle multiple frames and take into acco
 
 This initial test was done on a standard Vid4 dataset commonly used for multiframe reconstruction. Each frame was downsampled and had noise added to simulate a blurry image.  
 
-***![Figure 13](STAT-4830-mri-reconstruction-project/figures/final/fig13.png)***  
+***![Figure 13](../../figures/final/fig13.png)***  
 *Figure 13\. Multi-frame Reconstruction.*
 
 Comparing the result in Figure 13 to trying to reconstruct from a singular image, we see that the multiframe method improves PSNR significantly. Training on a singular frame using the CNN, the PSNR only comes to be 33.49 db compared to the 38.66 db that we get when we use multiframe methods.
